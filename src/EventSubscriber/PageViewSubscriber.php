@@ -58,19 +58,36 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
     }
 
     private const string BOT_PATTERN = '/bot|crawler|spider|slurp|preview|facebookexternalhit'
+        . '|googleother|google-inspectiontool|bahdantoolbox|cms-checker|crt-indexer'
+        . '|iphone os 13_2_3 like mac os x|android 7\.0; sm-g892a'
         . '|curl|wget|python|guzzle|axios|go-http-client|postman|headless|httpclient|java|php/';
+
+    private const string PROBE_PATH_PATTERN = '#(?:^|/)(?:wp-admin|wp-content|wp-includes)(?:/|$)'
+        . '|(?:^|/)(?:\.env|\.git)(?:/|$)|\.php(?:/|$)#i';
 
     private function isExcluded(Request $request): bool
     {
         $path = $request->getPathInfo();
-        $userAgent = strtolower((string) $request->headers->get('User-Agent'));
+        $requestUriPath = (string) parse_url($request->getRequestUri(), PHP_URL_PATH);
+        $userAgent = strtolower(trim((string) $request->headers->get('User-Agent')));
 
-        return str_starts_with($path, '/admin')
+        return $userAgent === ''
+            || str_starts_with($path, '/admin')
             || str_starts_with($path, '/mcp')
             || $path === '/healthz'
             || $request->headers->get('DNT') === '1'
             || $request->headers->get('Sec-GPC') === '1'
+            || preg_match(self::PROBE_PATH_PATTERN, $requestUriPath) === 1
+            || $this->hasSuspiciousChromiumHeaders($request, $userAgent)
             || preg_match(self::BOT_PATTERN, $userAgent) === 1;
+    }
+
+    private function hasSuspiciousChromiumHeaders(Request $request, string $userAgent): bool
+    {
+        return preg_match('/(?:chrome|chromium|edg)\/([0-9]+)/', $userAgent, $matches) === 1
+            && (int) $matches[1] >= 80
+            && !$request->headers->has('Sec-Fetch-Mode')
+            && !$request->headers->has('Sec-CH-UA');
     }
 
     /** @return array{string, ?string} */

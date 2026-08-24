@@ -52,7 +52,11 @@ final class PageViewSubscriberTest extends TestCase
         self::assertSame('direct', $repository->saved[0]->source);
     }
 
-    public function testIgnoresBotsAndDnt(): void
+    /**
+     * @param array<string, string> $headers
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('provideExcludedRequests')]
+    public function testIgnoresAutomatedAndPrivacyRequests(string $uri, array $headers): void
     {
         $repository = new class implements PageViewRepository {
             /** @var list<PageView> */
@@ -77,13 +81,35 @@ final class PageViewSubscriberTest extends TestCase
         $subscriber = new PageViewSubscriber($repository, 'secret-key-123');
 
         $kernel = $this->createStub(HttpKernelInterface::class);
-        $request = Request::create('https://bahdanhal.pl/tools', 'GET');
-        $request->headers->set('User-Agent', 'Googlebot/2.1');
+        $request = Request::create('https://bahdanhal.pl' . $uri, 'GET');
+        foreach ($headers as $name => $value) {
+            $request->headers->set($name, $value);
+        }
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
 
         $event = new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response);
         $subscriber->onResponse($event);
 
         self::assertCount(0, $repository->saved);
+    }
+
+    /** @return iterable<string, array{string, array<string, string>}> */
+    public static function provideExcludedRequests(): iterable
+    {
+        yield 'known search bot' => ['/tools', ['User-Agent' => 'Googlebot/2.1']];
+        yield 'missing user agent' => ['/tools', ['User-Agent' => '']];
+        yield 'internal audit crawler' => ['/tools', ['User-Agent' => 'BahdanToolbox/1.0']];
+        yield 'google inspection crawler' => ['/tools', ['User-Agent' => 'Google-InspectionTool/1.0']];
+        yield 'generic CMS scanner' => ['/tools', ['User-Agent' => 'Mozilla/5.0 CMS-Checker/1.0']];
+        yield 'known synthetic iPhone signature' => ['/tools', [
+            'User-Agent' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15',
+        ]];
+        yield 'Chromium without browser navigation headers' => ['/tools', [
+            'User-Agent' => 'Mozilla/5.0 Chrome/148.0.0.0 Safari/537.36',
+        ]];
+        yield 'do not track' => ['/tools', ['User-Agent' => 'Mozilla/5.0', 'DNT' => '1']];
+        yield 'global privacy control' => ['/tools', ['User-Agent' => 'Mozilla/5.0', 'Sec-GPC' => '1']];
+        yield 'WordPress probe' => ['/wp-content/themes/index.php', ['User-Agent' => 'Mozilla/5.0']];
+        yield 'environment file probe' => ['/.env', ['User-Agent' => 'Mozilla/5.0']];
     }
 }
