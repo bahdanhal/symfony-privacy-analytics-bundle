@@ -1,0 +1,36 @@
+{
+    "name": "bahdan/symfony-privacy-analytics-bundle",
+    "description": "Zero-cookie, GDPR-compliant server-side privacy analytics bundle for Symfony",
+    "type": "symfony-bundle",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Bahdan",
+            "homepage": "https://bahdanhal.pl"
+        }
+    ],
+    "require": {
+        "php": ">=8.3",
+        "symfony/http-kernel": "^7.0 || ^8.0",
+        "symfony/http-foundation": "^7.0 || ^8.0",
+        "symfony/event-dispatcher": "^7.0 || ^8.0",
+        "doctrine/orm": "^3.0",
+        "doctrine/dbal": "^3.8 || ^4.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0 || ^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Bahdan\\PrivacyAnalyticsBundle\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Bahdan\\PrivacyAnalyticsBundle\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
