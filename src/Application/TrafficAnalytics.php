@@ -7,7 +7,7 @@ namespace Bahdan\PrivacyAnalyticsBundle\Application;
 use Bahdan\PrivacyAnalyticsBundle\Domain\PageView;
 use Bahdan\PrivacyAnalyticsBundle\Domain\PageViewRepository;
 
-final readonly class TrafficAnalytics
+readonly class TrafficAnalytics
 {
     public function __construct(private PageViewRepository $pageViews)
     {

@@ -39,7 +39,7 @@ final class PageViewSubscriberTest extends TestCase
 
         $subscriber = new PageViewSubscriber($repository, 'secret-key-123');
 
-        $kernel = $this->createMock(HttpKernelInterface::class);
+        $kernel = $this->createStub(HttpKernelInterface::class);
         $request = Request::create('https://bahdanhal.pl/tools', 'GET');
         $request->headers->set('User-Agent', 'Mozilla/5.0');
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html; charset=UTF-8']);
@@ -76,7 +76,7 @@ final class PageViewSubscriberTest extends TestCase
 
         $subscriber = new PageViewSubscriber($repository, 'secret-key-123');
 
-        $kernel = $this->createMock(HttpKernelInterface::class);
+        $kernel = $this->createStub(HttpKernelInterface::class);
         $request = Request::create('https://bahdanhal.pl/tools', 'GET');
         $request->headers->set('User-Agent', 'Googlebot/2.1');
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);

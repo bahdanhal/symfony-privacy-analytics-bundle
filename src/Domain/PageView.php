@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Bahdan\PrivacyAnalyticsBundle\Domain;
 
-final readonly class PageView
+readonly class PageView
 {
     public function __construct(
         public \DateTimeImmutable $occurredAt,
@@ -16,13 +16,13 @@ final readonly class PageView
     }
 
     /** @param array<string, mixed> $data */
-    public static function fromArray(array $data): self
+    public static function fromArray(array $data): static
     {
         $referrerHost = isset($data['referrer_host']) && is_string($data['referrer_host']) && $data['referrer_host'] !== ''
             ? $data['referrer_host']
             : null;
 
-        return new self(
+        return new static(
             new \DateTimeImmutable((string) ($data['timestamp'] ?? 'now')),
             (string) ($data['visitor_hash'] ?? ''),
             (string) ($data['path'] ?? '/'),

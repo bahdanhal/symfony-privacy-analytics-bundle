@@ -12,13 +12,13 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
     private string $filePath;
 
     public function __construct(
-        string $storageDirectory,
+        string $directory,
         private int $retentionDays = 90,
     ) {
-        if (!is_dir($storageDirectory)) {
-            @mkdir($storageDirectory, 0755, true);
+        if (!is_dir($directory)) {
+            @mkdir($directory, 0755, true);
         }
-        $this->filePath = rtrim($storageDirectory, '/') . '/page-views.jsonl';
+        $this->filePath = rtrim($directory, '/') . '/page-views.jsonl';
     }
 
     public function save(PageView $pageView): void
