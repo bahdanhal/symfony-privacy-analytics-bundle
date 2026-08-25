@@ -9,7 +9,7 @@ use Bahdan\PrivacyAnalyticsBundle\Domain\PageViewRepository;
 
 final readonly class JsonlPageViewRepository implements PageViewRepository
 {
-    private string $filePath;
+    private string $directory;
 
     public function __construct(
         string $directory,
@@ -18,43 +18,46 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
         if (!is_dir($directory)) {
             @mkdir($directory, 0755, true);
         }
-        $this->filePath = rtrim($directory, '/') . '/page-views.jsonl';
+        $this->directory = rtrim($directory, '/');
     }
 
     public function save(PageView $pageView): void
     {
         $line = json_encode($pageView->toArray(), JSON_UNESCAPED_SLASHES) . "\n";
-        @file_put_contents($this->filePath, $line, FILE_APPEND | LOCK_EX);
+        @file_put_contents($this->filePath($pageView->occurredAt), $line, FILE_APPEND | LOCK_EX);
     }
 
     /** @return list<PageView> */
     public function since(\DateTimeImmutable $since): array
     {
-        if (!file_exists($this->filePath)) {
-            return [];
-        }
-
-        $lines = @file($this->filePath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        if ($lines === false) {
-            return [];
-        }
-
         $views = [];
-        foreach ($lines as $line) {
-            /** @var array<string, mixed>|null $data */
-            $data = json_decode($line, true);
-            if (!is_array($data)) {
+        foreach ($this->filePaths() as $filePath) {
+            $handle = @fopen($filePath, 'rb');
+            if ($handle === false) {
                 continue;
             }
-            try {
-                $view = PageView::fromArray($data);
-                if ($view->occurredAt >= $since) {
-                    $views[] = $view;
+            if (@flock($handle, LOCK_SH)) {
+                while (($line = fgets($handle)) !== false) {
+                    /** @var array<string, mixed>|null $data */
+                    $data = json_decode($line, true);
+                    if (!is_array($data)) {
+                        continue;
+                    }
+                    try {
+                        $view = PageView::fromArray($data);
+                        if ($view->occurredAt >= $since) {
+                            $views[] = $view;
+                        }
+                    } catch (\Throwable) {
+                        // Ignore malformed lines gracefully
+                    }
                 }
-            } catch (\Throwable) {
-                // Ignore malformed lines gracefully
+                flock($handle, LOCK_UN);
             }
+            fclose($handle);
         }
+
+        usort($views, static fn (PageView $left, PageView $right): int => $left->occurredAt <=> $right->occurredAt);
 
         return $views;
     }
@@ -94,9 +97,10 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
         $p7 = ['views' => 0, 'visitors' => [], 'sources' => [], 'referrers' => [], 'paths' => []];
         $p30 = ['views' => 0, 'visitors' => [], 'sources' => [], 'referrers' => [], 'paths' => []];
 
-        if (file_exists($this->filePath)) {
-            $handle = @fopen($this->filePath, 'rb');
+        foreach ($this->filePaths() as $filePath) {
+            $handle = @fopen($filePath, 'rb');
             if ($handle !== false) {
+                @flock($handle, LOCK_SH);
                 while (($line = fgets($handle)) !== false) {
                     $line = trim($line);
                     if ($line === '') {
@@ -148,6 +152,7 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
                         continue;
                     }
                 }
+                flock($handle, LOCK_UN);
                 fclose($handle);
             }
         }
@@ -189,43 +194,80 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
 
     public function prune(\DateTimeImmutable $now): int
     {
-        if (!file_exists($this->filePath)) {
-            return 0;
-        }
-
         $cutoff = $now->modify(sprintf('-%d days', max(1, $this->retentionDays)));
-        $lines = @file($this->filePath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        if ($lines === false) {
-            return 0;
-        }
-
-        $retained = [];
         $prunedCount = 0;
 
-        foreach ($lines as $line) {
-            /** @var array<string, mixed>|null $data */
-            $data = json_decode($line, true);
-            if (!is_array($data)) {
-                ++$prunedCount;
+        foreach ($this->filePaths() as $filePath) {
+            $input = @fopen($filePath, 'c+b');
+            if ($input === false || !@flock($input, LOCK_EX)) {
+                if (is_resource($input)) {
+                    fclose($input);
+                }
                 continue;
             }
-            try {
-                $view = PageView::fromArray($data);
-                if ($view->occurredAt >= $cutoff) {
-                    $retained[] = $line;
-                } else {
+
+            $temporaryPath = tempnam($this->directory, 'page-views-prune-');
+            $output = $temporaryPath === false ? false : @fopen($temporaryPath, 'w+b');
+            if ($output === false) {
+                if ($temporaryPath !== false) {
+                    @unlink($temporaryPath);
+                }
+                flock($input, LOCK_UN);
+                fclose($input);
+                continue;
+            }
+
+            rewind($input);
+            while (($line = fgets($input)) !== false) {
+                /** @var array<string, mixed>|null $data */
+                $data = json_decode($line, true);
+                if (!is_array($data)) {
+                    ++$prunedCount;
+                    continue;
+                }
+                try {
+                    $view = PageView::fromArray($data);
+                    if ($view->occurredAt >= $cutoff) {
+                        fwrite($output, rtrim($line, "\r\n") . "\n");
+                    } else {
+                        ++$prunedCount;
+                    }
+                } catch (\Throwable) {
                     ++$prunedCount;
                 }
-            } catch (\Throwable) {
-                ++$prunedCount;
             }
-        }
 
-        if ($prunedCount > 0) {
-            $content = $retained === [] ? '' : implode("\n", $retained) . "\n";
-            @file_put_contents($this->filePath, $content, LOCK_EX);
+            rewind($output);
+            ftruncate($input, 0);
+            rewind($input);
+            stream_copy_to_stream($output, $input);
+            fflush($input);
+            fclose($output);
+            if ($temporaryPath !== false) {
+                @unlink($temporaryPath);
+            }
+            flock($input, LOCK_UN);
+            fclose($input);
         }
 
         return $prunedCount;
+    }
+
+    private function filePath(\DateTimeImmutable $occurredAt): string
+    {
+        return $this->directory . '/page-views-' . $occurredAt->format('Y-m') . '.jsonl';
+    }
+
+    /** @return list<string> */
+    private function filePaths(): array
+    {
+        $paths = glob($this->directory . '/page-views-*.jsonl') ?: [];
+        $legacyPath = $this->directory . '/page-views.jsonl';
+        if (is_file($legacyPath)) {
+            $paths[] = $legacyPath;
+        }
+        sort($paths);
+
+        return array_values(array_unique($paths));
     }
 }

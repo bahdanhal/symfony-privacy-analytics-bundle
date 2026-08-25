@@ -7,6 +7,7 @@ namespace Bahdan\PrivacyAnalyticsBundle\Infrastructure;
 use Bahdan\PrivacyAnalyticsBundle\Domain\PageView;
 use Bahdan\PrivacyAnalyticsBundle\Domain\PageViewRepository;
 use Bahdan\PrivacyAnalyticsBundle\Entity\PageViewEntity;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\EntityManagerInterface;
 
 final readonly class DoctrinePageViewRepository implements PageViewRepository
@@ -20,7 +21,7 @@ final readonly class DoctrinePageViewRepository implements PageViewRepository
     public function save(PageView $pageView): void
     {
         $this->entityManager->getConnection()->insert('page_views', [
-            'occurred_at' => $pageView->occurredAt->format('Y-m-d H:i:s'),
+            'occurred_at' => $pageView->occurredAt->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:sP'),
             'visitor_hash' => $pageView->visitorHash,
             'path' => $pageView->path,
             'source' => $pageView->source,
@@ -178,30 +179,35 @@ final readonly class DoctrinePageViewRepository implements PageViewRepository
      */
     private function aggregateDaily(\DateTimeImmutable $now, \DateTimeImmutable $thirtyDaysAgo): array
     {
-        /** @var array<string, array{page_views: int, visitors: array<string, bool>}> $days */
+        /** @var array<string, array{page_views: int, unique_visitors: int}> $days */
         $days = [];
         for ($offset = 29; $offset >= 0; --$offset) {
             $date = $now->modify(sprintf('-%d days', $offset))->format('Y-m-d');
-            $days[$date] = ['page_views' => 0, 'visitors' => []];
+            $days[$date] = ['page_views' => 0, 'unique_visitors' => 0];
         }
 
-        /** @var list<array{occurredAt: mixed, visitorHash: mixed}> $records */
-        $records = $this->entityManager->createQueryBuilder()
-            ->select('p.occurredAt', 'p.visitorHash')
-            ->from(PageViewEntity::class, 'p')
-            ->where('p.occurredAt >= :since')
-            ->setParameter('since', $thirtyDaysAgo)
-            ->getQuery()
-            ->getScalarResult();
+        $dateExpression = $this->entityManager->getConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform
+            ? "DATE(occurred_at AT TIME ZONE 'UTC')"
+            : 'DATE(occurred_at)';
+
+        /** @var list<array{day: mixed, page_views: mixed, unique_visitors: mixed}> $records */
+        $records = $this->entityManager->getConnection()->createQueryBuilder()
+            ->select($dateExpression . ' AS day', 'COUNT(*) AS page_views', 'COUNT(DISTINCT visitor_hash) AS unique_visitors')
+            ->from('page_views')
+            ->where('occurred_at >= :since')
+            ->setParameter('since', $thirtyDaysAgo->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:sP'))
+            ->groupBy($dateExpression)
+            ->orderBy('day', 'ASC')
+            ->executeQuery()
+            ->fetchAllAssociative();
 
         foreach ($records as $record) {
-            $rawDate = $record['occurredAt'];
-            $date = is_string($rawDate) ? substr($rawDate, 0, 10) : ($rawDate instanceof \DateTimeInterface ? $rawDate->format('Y-m-d') : '');
+            $date = substr((string) $record['day'], 0, 10);
             if (!isset($days[$date])) {
                 continue;
             }
-            ++$days[$date]['page_views'];
-            $days[$date]['visitors'][(string) $record['visitorHash']] = true;
+            $days[$date]['page_views'] = (int) $record['page_views'];
+            $days[$date]['unique_visitors'] = (int) $record['unique_visitors'];
         }
 
         $result = [];
@@ -209,7 +215,7 @@ final readonly class DoctrinePageViewRepository implements PageViewRepository
             $result[] = [
                 'date' => $date,
                 'page_views' => $data['page_views'],
-                'unique_visitors' => count($data['visitors']),
+                'unique_visitors' => $data['unique_visitors'],
             ];
         }
 

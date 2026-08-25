@@ -31,17 +31,17 @@ final class PrivacyAnalyticsExtension extends Extension
         $jsonlDefinition->setAutoconfigured(true);
         $container->setDefinition(JsonlPageViewRepository::class, $jsonlDefinition);
 
-        $doctrineDefinition = new Definition(DoctrinePageViewRepository::class, [
-            new Reference('doctrine.orm.entity_manager'),
-            $config['retention_days'],
-        ]);
-        $doctrineDefinition->setAutowired(true);
-        $doctrineDefinition->setAutoconfigured(true);
-        $container->setDefinition(DoctrinePageViewRepository::class, $doctrineDefinition);
-
-        $targetRepository = $config['storage'] === 'jsonl'
-            ? JsonlPageViewRepository::class
-            : DoctrinePageViewRepository::class;
+        $targetRepository = JsonlPageViewRepository::class;
+        if ($config['storage'] === 'doctrine') {
+            $doctrineDefinition = new Definition(DoctrinePageViewRepository::class, [
+                new Reference('doctrine.orm.entity_manager'),
+                $config['retention_days'],
+            ]);
+            $doctrineDefinition->setAutowired(true);
+            $doctrineDefinition->setAutoconfigured(true);
+            $container->setDefinition(DoctrinePageViewRepository::class, $doctrineDefinition);
+            $targetRepository = DoctrinePageViewRepository::class;
+        }
 
         $container->setAlias(PageViewRepository::class, $targetRepository)->setPublic(true);
 

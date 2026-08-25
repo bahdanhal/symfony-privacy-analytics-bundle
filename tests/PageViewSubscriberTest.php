@@ -115,9 +115,6 @@ final class PageViewSubscriberTest extends TestCase
         yield 'email scraper' => ['/tools', ['User-Agent' => 'SparixEmailScraper/1.0']];
         yield 'WordPress safety scanner' => ['/tools', ['User-Agent' => 'WP-Safe-Scanner/1.0']];
         yield 'internet measurement scanner' => ['/tools', ['User-Agent' => 'InternetMeasurement/1.0']];
-        yield 'known synthetic iPhone signature' => ['/tools', [
-            'User-Agent' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15',
-        ]];
         yield 'headless chrome browser' => ['/tools', [
             'User-Agent' => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 HeadlessChrome/108.0.5359.71 Safari/537.36',
         ]];
@@ -169,6 +166,43 @@ final class PageViewSubscriberTest extends TestCase
         self::assertCount(1, $repository->saved);
     }
 
+    public function testAllowsLegacyMobileBrowserUserAgent(): void
+    {
+        $repository = new class implements PageViewRepository {
+            /** @var list<PageView> */
+            public array $saved = [];
+
+            public function save(PageView $pageView): void
+            {
+                $this->saved[] = $pageView;
+            }
+
+            public function since(\DateTimeImmutable $since): array
+            {
+                return $this->saved;
+            }
+
+            public function prune(\DateTimeImmutable $now): int
+            {
+                return 0;
+            }
+
+            public function summary(\DateTimeImmutable $now): array
+            {
+                return [];
+            }
+        };
+        $subscriber = new PageViewSubscriber($repository, 'secret-key-123');
+        $kernel = $this->createStub(HttpKernelInterface::class);
+        $request = Request::create('https://bahdanhal.pl/tools', 'GET');
+        $request->headers->set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15');
+        $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
+
+        $subscriber->onResponse(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
+
+        self::assertCount(1, $repository->saved);
+    }
+
     public function testDependencyInjectionExtension(): void
     {
         $container = new \Symfony\Component\DependencyInjection\ContainerBuilder();
@@ -185,5 +219,7 @@ final class PageViewSubscriberTest extends TestCase
         self::assertTrue($container->hasDefinition(\Bahdan\PrivacyAnalyticsBundle\Application\TrafficAnalytics::class));
         self::assertTrue($container->hasDefinition(\Bahdan\PrivacyAnalyticsBundle\EventSubscriber\PageViewSubscriber::class));
         self::assertTrue($container->hasAlias(\Bahdan\PrivacyAnalyticsBundle\Domain\PageViewRepository::class));
+        self::assertFalse($container->hasDefinition(\Bahdan\PrivacyAnalyticsBundle\Infrastructure\DoctrinePageViewRepository::class));
+        $container->compile();
     }
 }

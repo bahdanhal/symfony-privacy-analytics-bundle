@@ -8,13 +8,21 @@ A lightweight, zero-cookie, GDPR-compliant server-side web analytics bundle for 
 - **Bot & Crawler Filtering**: Ignores automated crawlers, spiders, and testing clients automatically.
 - **Privacy Header Compliance**: Honors `DNT` (Do Not Track) and `Sec-GPC` (Global Privacy Control) request headers.
 - **Referrer Categorization**: Automatically groups incoming traffic into `search`, `social`, `referral`, `internal`, and `direct`.
-- **Dual Storage**: Supports Doctrine ORM (PostgreSQL/SQLite/MySQL) and lightweight JSONL append-only storage with automatic retention pruning.
+- **Dual Storage**: Supports Doctrine ORM (PostgreSQL/SQLite/MySQL) and monthly partitioned JSONL storage with streaming retention pruning.
 
 ## Installation
 
 ```bash
 composer require bahdan/symfony-privacy-analytics-bundle
 ```
+
+Doctrine is optional. Install it only when selecting the Doctrine storage backend:
+
+```bash
+composer require doctrine/orm doctrine/dbal
+```
+
+The JSONL backend does not register or resolve Doctrine services. Existing `page-views.jsonl` files remain readable while new events are written to monthly `page-views-YYYY-MM.jsonl` partitions.
 
 ## Configuration
 

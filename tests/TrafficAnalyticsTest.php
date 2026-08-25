@@ -62,4 +62,26 @@ final class TrafficAnalyticsTest extends TestCase
         self::assertSame(1, $summary['last_30_days']['referring_domains']['google.com']);
         self::assertCount(30, $summary['daily']);
     }
+
+    public function testPartitionsFilesAndStreamsPruningAcrossLegacyStorage(): void
+    {
+        $repository = new JsonlPageViewRepository($this->directory, 30);
+        $now = new \DateTimeImmutable('2026-03-15 12:00:00 UTC');
+        $repository->save(new PageView($now->modify('-40 days'), 'old', '/old', 'direct', null));
+        $repository->save(new PageView($now->modify('-1 day'), 'new', '/new', 'direct', null));
+
+        file_put_contents(
+            $this->directory . '/page-views.jsonl',
+            json_encode((new PageView($now->modify('-2 days'), 'legacy', '/legacy', 'direct', null))->toArray()) . "\n",
+        );
+
+        self::assertFileExists($this->directory . '/page-views-2026-02.jsonl');
+        self::assertFileExists($this->directory . '/page-views-2026-03.jsonl');
+        self::assertCount(3, $repository->since($now->modify('-60 days')));
+        self::assertSame(1, $repository->prune($now));
+
+        $views = $repository->since($now->modify('-60 days'));
+        self::assertCount(2, $views);
+        self::assertSame(['/legacy', '/new'], array_map(static fn (PageView $view): string => $view->path, $views));
+    }
 }
