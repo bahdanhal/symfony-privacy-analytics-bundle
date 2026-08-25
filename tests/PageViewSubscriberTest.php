@@ -101,6 +101,10 @@ final class PageViewSubscriberTest extends TestCase
         yield 'internal audit crawler' => ['/tools', ['User-Agent' => 'BahdanToolbox/1.0']];
         yield 'google inspection crawler' => ['/tools', ['User-Agent' => 'Google-InspectionTool/1.0']];
         yield 'generic CMS scanner' => ['/tools', ['User-Agent' => 'Mozilla/5.0 CMS-Checker/1.0']];
+        yield 'domain intelligence collector' => ['/tools', ['User-Agent' => 'DomainIntelCollector/1.0']];
+        yield 'email scraper' => ['/tools', ['User-Agent' => 'SparixEmailScraper/1.0']];
+        yield 'WordPress safety scanner' => ['/tools', ['User-Agent' => 'WP-Safe-Scanner/1.0']];
+        yield 'internet measurement scanner' => ['/tools', ['User-Agent' => 'InternetMeasurement/1.0']];
         yield 'known synthetic iPhone signature' => ['/tools', [
             'User-Agent' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15',
         ]];
