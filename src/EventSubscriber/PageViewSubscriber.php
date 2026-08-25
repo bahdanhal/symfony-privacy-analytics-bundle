@@ -8,7 +8,9 @@ use Bahdan\PrivacyAnalyticsBundle\Domain\PageView;
 use Bahdan\PrivacyAnalyticsBundle\Domain\PageViewRepository;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpKernel\Event\KernelEvent;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
+use Symfony\Component\HttpKernel\Event\TerminateEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 
 final readonly class PageViewSubscriber implements EventSubscriberInterface
@@ -24,11 +26,15 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
 
     public static function getSubscribedEvents(): array
     {
-        return [KernelEvents::RESPONSE => ['onResponse', -10]];
+        return [KernelEvents::TERMINATE => ['onTerminate', -10]];
     }
 
-    public function onResponse(ResponseEvent $event): void
+    public function onTerminate(KernelEvent $event): void
     {
+        if (!$event instanceof TerminateEvent && !$event instanceof ResponseEvent) {
+            return;
+        }
+
         $request = $event->getRequest();
         $response = $event->getResponse();
         $contentType = (string) $response->headers->get('Content-Type');
@@ -47,21 +53,32 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
         [$source, $referrerHost] = $this->source($request);
         $clientIp = $request->getClientIp() ?? 'unknown';
         $userAgent = (string) $request->headers->get('User-Agent');
+        $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $dateSalt = $now->format('Y-m-d');
 
         $this->pageViews->save(new PageView(
-            new \DateTimeImmutable('now', new \DateTimeZone('UTC')),
-            hash_hmac('sha256', $clientIp . '|' . $userAgent, $this->secret),
+            $now,
+            hash_hmac('sha256', $dateSalt . '|' . $clientIp . '|' . $userAgent, $this->secret),
             $this->normalizedPath($request->getPathInfo()),
             $source,
             $referrerHost,
         ));
     }
 
+    /**
+     * Alias for backward-compatibility in tests.
+     */
+    public function onResponse(ResponseEvent $event): void
+    {
+        $this->onTerminate($event);
+    }
+
     private const string BOT_PATTERN = '/bot|crawler|spider|slurp|preview|facebookexternalhit'
         . '|googleother|google-inspectiontool|bahdantoolbox|cms-checker|crt-indexer'
         . '|domainintelcollector|sparixemailscraper|wp-safe-scanner|internetmeasurement'
         . '|iphone os 13_2_3 like mac os x|android 7\.0; sm-g892a'
-        . '|curl|wget|python|guzzle|axios|go-http-client|postman|headless|httpclient|java|php/';
+        . '|curl|wget|python|guzzle|axios|go-http-client|postman|headless|httpclient|java|php'
+        . '|headlesschrome|phantomjs|puppeteer|selenium|playwright/i';
 
     private const string PROBE_PATH_PATTERN = '#(?:^|/)(?:wp-admin|wp-content|wp-includes)(?:/|$)'
         . '|(?:^|/)(?:\.env|\.git)(?:/|$)|\.php(?:/|$)#i';
@@ -79,16 +96,7 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
             || $request->headers->get('DNT') === '1'
             || $request->headers->get('Sec-GPC') === '1'
             || preg_match(self::PROBE_PATH_PATTERN, $requestUriPath) === 1
-            || $this->hasSuspiciousChromiumHeaders($request, $userAgent)
             || preg_match(self::BOT_PATTERN, $userAgent) === 1;
-    }
-
-    private function hasSuspiciousChromiumHeaders(Request $request, string $userAgent): bool
-    {
-        return preg_match('/(?:chrome|chromium|edg)\/([0-9]+)/', $userAgent, $matches) === 1
-            && (int) $matches[1] >= 80
-            && !$request->headers->has('Sec-Fetch-Mode')
-            && !$request->headers->has('Sec-CH-UA');
     }
 
     /** @return array{string, ?string} */

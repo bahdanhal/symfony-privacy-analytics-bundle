@@ -19,16 +19,13 @@ final readonly class DoctrinePageViewRepository implements PageViewRepository
 
     public function save(PageView $pageView): void
     {
-        $entity = new PageViewEntity(
-            $pageView->occurredAt,
-            $pageView->visitorHash,
-            $pageView->path,
-            $pageView->source,
-            $pageView->referrerHost
-        );
-
-        $this->entityManager->persist($entity);
-        $this->entityManager->flush();
+        $this->entityManager->getConnection()->insert('page_views', [
+            'occurred_at' => $pageView->occurredAt->format('Y-m-d H:i:s'),
+            'visitor_hash' => $pageView->visitorHash,
+            'path' => $pageView->path,
+            'source' => $pageView->source,
+            'referrer_host' => $pageView->referrerHost,
+        ]);
     }
 
     /** @return list<PageView> */
@@ -53,6 +50,170 @@ final readonly class DoctrinePageViewRepository implements PageViewRepository
             ),
             $entities
         );
+    }
+
+    /**
+     * @return array{
+     *     privacy: string,
+     *     last_7_days: array{
+     *         page_views: int,
+     *         unique_visitors: int,
+     *         sources: array<string, int>,
+     *         referring_domains: array<string, int>,
+     *         top_paths: array<string, int>
+     *     },
+     *     last_30_days: array{
+     *         page_views: int,
+     *         unique_visitors: int,
+     *         sources: array<string, int>,
+     *         referring_domains: array<string, int>,
+     *         top_paths: array<string, int>
+     *     },
+     *     daily: list<array{date: string, page_views: int, unique_visitors: int}>
+     * }
+     */
+    public function summary(\DateTimeImmutable $now): array
+    {
+        $thirtyDaysAgo = $now->modify('-30 days');
+        $sevenDaysAgo = $now->modify('-7 days');
+
+        return [
+            'privacy' => 'Cookie-free aggregates. IP addresses, query strings and full referrers are never stored.',
+            'last_7_days' => $this->aggregatePeriod($sevenDaysAgo),
+            'last_30_days' => $this->aggregatePeriod($thirtyDaysAgo),
+            'daily' => $this->aggregateDaily($now, $thirtyDaysAgo),
+        ];
+    }
+
+    /**
+     * @return array{page_views: int, unique_visitors: int, sources: array<string, int>, referring_domains: array<string, int>, top_paths: array<string, int>}
+     */
+    private function aggregatePeriod(\DateTimeImmutable $since): array
+    {
+        $qb = $this->entityManager->createQueryBuilder();
+        /** @var array{total_views?: mixed, unique_visitors?: mixed} $counts */
+        $counts = $qb->select('COUNT(p.id) as total_views', 'COUNT(DISTINCT p.visitorHash) as unique_visitors')
+            ->from(PageViewEntity::class, 'p')
+            ->where('p.occurredAt >= :since')
+            ->setParameter('since', $since)
+            ->getQuery()
+            ->getSingleResult();
+
+        $pageViews = (int) ($counts['total_views'] ?? 0);
+        $uniqueVisitors = (int) ($counts['unique_visitors'] ?? 0);
+
+        /** @var list<array{source: string, cnt: mixed}> $sourcesResult */
+        $sourcesResult = $this->entityManager->createQueryBuilder()
+            ->select('p.source', 'COUNT(p.id) as cnt')
+            ->from(PageViewEntity::class, 'p')
+            ->where('p.occurredAt >= :since')
+            ->setParameter('since', $since)
+            ->groupBy('p.source')
+            ->orderBy('cnt', 'DESC')
+            ->setMaxResults(10)
+            ->getQuery()
+            ->getResult();
+
+        $sources = [];
+        foreach ($sourcesResult as $row) {
+            $src = trim((string) $row['source']);
+            if ($src !== '') {
+                $sources[$src] = (int) $row['cnt'];
+            }
+        }
+
+        /** @var list<array{referrerHost: ?string, cnt: mixed}> $referrersResult */
+        $referrersResult = $this->entityManager->createQueryBuilder()
+            ->select('p.referrerHost', 'COUNT(p.id) as cnt')
+            ->from(PageViewEntity::class, 'p')
+            ->where('p.occurredAt >= :since')
+            ->andWhere('p.referrerHost IS NOT NULL')
+            ->andWhere("p.referrerHost != ''")
+            ->setParameter('since', $since)
+            ->groupBy('p.referrerHost')
+            ->orderBy('cnt', 'DESC')
+            ->setMaxResults(10)
+            ->getQuery()
+            ->getResult();
+
+        $referringDomains = [];
+        foreach ($referrersResult as $row) {
+            $ref = trim((string) ($row['referrerHost'] ?? ''));
+            if ($ref !== '') {
+                $referringDomains[$ref] = (int) $row['cnt'];
+            }
+        }
+
+        /** @var list<array{path: string, cnt: mixed}> $pathsResult */
+        $pathsResult = $this->entityManager->createQueryBuilder()
+            ->select('p.path', 'COUNT(p.id) as cnt')
+            ->from(PageViewEntity::class, 'p')
+            ->where('p.occurredAt >= :since')
+            ->setParameter('since', $since)
+            ->groupBy('p.path')
+            ->orderBy('cnt', 'DESC')
+            ->setMaxResults(10)
+            ->getQuery()
+            ->getResult();
+
+        $topPaths = [];
+        foreach ($pathsResult as $row) {
+            $pth = trim((string) $row['path']);
+            if ($pth !== '') {
+                $topPaths[$pth] = (int) $row['cnt'];
+            }
+        }
+
+        return [
+            'page_views' => $pageViews,
+            'unique_visitors' => $uniqueVisitors,
+            'sources' => $sources,
+            'referring_domains' => $referringDomains,
+            'top_paths' => $topPaths,
+        ];
+    }
+
+    /**
+     * @return list<array{date: string, page_views: int, unique_visitors: int}>
+     */
+    private function aggregateDaily(\DateTimeImmutable $now, \DateTimeImmutable $thirtyDaysAgo): array
+    {
+        /** @var array<string, array{page_views: int, visitors: array<string, bool>}> $days */
+        $days = [];
+        for ($offset = 29; $offset >= 0; --$offset) {
+            $date = $now->modify(sprintf('-%d days', $offset))->format('Y-m-d');
+            $days[$date] = ['page_views' => 0, 'visitors' => []];
+        }
+
+        /** @var list<array{occurredAt: mixed, visitorHash: mixed}> $records */
+        $records = $this->entityManager->createQueryBuilder()
+            ->select('p.occurredAt', 'p.visitorHash')
+            ->from(PageViewEntity::class, 'p')
+            ->where('p.occurredAt >= :since')
+            ->setParameter('since', $thirtyDaysAgo)
+            ->getQuery()
+            ->getScalarResult();
+
+        foreach ($records as $record) {
+            $rawDate = $record['occurredAt'];
+            $date = is_string($rawDate) ? substr($rawDate, 0, 10) : ($rawDate instanceof \DateTimeInterface ? $rawDate->format('Y-m-d') : '');
+            if (!isset($days[$date])) {
+                continue;
+            }
+            ++$days[$date]['page_views'];
+            $days[$date]['visitors'][(string) $record['visitorHash']] = true;
+        }
+
+        $result = [];
+        foreach ($days as $date => $data) {
+            $result[] = [
+                'date' => $date,
+                'page_views' => $data['page_views'],
+                'unique_visitors' => count($data['visitors']),
+            ];
+        }
+
+        return $result;
     }
 
     public function prune(\DateTimeImmutable $now): int

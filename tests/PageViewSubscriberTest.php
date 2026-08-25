@@ -35,6 +35,11 @@ final class PageViewSubscriberTest extends TestCase
             {
                 return 0;
             }
+
+            public function summary(\DateTimeImmutable $now): array
+            {
+                return [];
+            }
         };
 
         $subscriber = new PageViewSubscriber($repository, 'secret-key-123');
@@ -76,6 +81,11 @@ final class PageViewSubscriberTest extends TestCase
             {
                 return 0;
             }
+
+            public function summary(\DateTimeImmutable $now): array
+            {
+                return [];
+            }
         };
 
         $subscriber = new PageViewSubscriber($repository, 'secret-key-123');
@@ -108,12 +118,72 @@ final class PageViewSubscriberTest extends TestCase
         yield 'known synthetic iPhone signature' => ['/tools', [
             'User-Agent' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15',
         ]];
-        yield 'Chromium without browser navigation headers' => ['/tools', [
-            'User-Agent' => 'Mozilla/5.0 Chrome/148.0.0.0 Safari/537.36',
+        yield 'headless chrome browser' => ['/tools', [
+            'User-Agent' => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 HeadlessChrome/108.0.5359.71 Safari/537.36',
+        ]];
+        yield 'puppeteer automation' => ['/tools', [
+            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Puppeteer/19.0.0 Safari/537.36',
         ]];
         yield 'do not track' => ['/tools', ['User-Agent' => 'Mozilla/5.0', 'DNT' => '1']];
         yield 'global privacy control' => ['/tools', ['User-Agent' => 'Mozilla/5.0', 'Sec-GPC' => '1']];
         yield 'WordPress probe' => ['/wp-content/themes/index.php', ['User-Agent' => 'Mozilla/5.0']];
         yield 'environment file probe' => ['/.env', ['User-Agent' => 'Mozilla/5.0']];
+    }
+
+    public function testAllowsStandardChromiumUserAgent(): void
+    {
+        $repository = new class implements PageViewRepository {
+            /** @var list<PageView> */
+            public array $saved = [];
+
+            public function save(PageView $pageView): void
+            {
+                $this->saved[] = $pageView;
+            }
+
+            public function since(\DateTimeImmutable $since): array
+            {
+                return $this->saved;
+            }
+
+            public function prune(\DateTimeImmutable $now): int
+            {
+                return 0;
+            }
+
+            public function summary(\DateTimeImmutable $now): array
+            {
+                return [];
+            }
+        };
+
+        $subscriber = new PageViewSubscriber($repository, 'secret-key-123');
+        $kernel = $this->createStub(HttpKernelInterface::class);
+        $request = Request::create('https://bahdanhal.pl/tools', 'GET');
+        $request->headers->set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
+
+        $event = new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response);
+        $subscriber->onResponse($event);
+
+        self::assertCount(1, $repository->saved);
+    }
+
+    public function testDependencyInjectionExtension(): void
+    {
+        $container = new \Symfony\Component\DependencyInjection\ContainerBuilder();
+        $extension = new \Bahdan\PrivacyAnalyticsBundle\DependencyInjection\PrivacyAnalyticsExtension();
+        $extension->load([
+            [
+                'secret' => 'test-secret',
+                'storage' => 'jsonl',
+                'storage_directory' => '/tmp/analytics',
+                'retention_days' => 60,
+            ],
+        ], $container);
+
+        self::assertTrue($container->hasDefinition(\Bahdan\PrivacyAnalyticsBundle\Application\TrafficAnalytics::class));
+        self::assertTrue($container->hasDefinition(\Bahdan\PrivacyAnalyticsBundle\EventSubscriber\PageViewSubscriber::class));
+        self::assertTrue($container->hasAlias(\Bahdan\PrivacyAnalyticsBundle\Domain\PageViewRepository::class));
     }
 }

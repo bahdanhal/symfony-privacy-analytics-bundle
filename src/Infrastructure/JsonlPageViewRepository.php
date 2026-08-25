@@ -59,6 +59,134 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
         return $views;
     }
 
+    /**
+     * @return array{
+     *     privacy: string,
+     *     last_7_days: array{
+     *         page_views: int,
+     *         unique_visitors: int,
+     *         sources: array<string, int>,
+     *         referring_domains: array<string, int>,
+     *         top_paths: array<string, int>
+     *     },
+     *     last_30_days: array{
+     *         page_views: int,
+     *         unique_visitors: int,
+     *         sources: array<string, int>,
+     *         referring_domains: array<string, int>,
+     *         top_paths: array<string, int>
+     *     },
+     *     daily: list<array{date: string, page_views: int, unique_visitors: int}>
+     * }
+     */
+    public function summary(\DateTimeImmutable $now): array
+    {
+        $thirtyDaysAgo = $now->modify('-30 days');
+        $sevenDaysAgo = $now->modify('-7 days');
+
+        /** @var array<string, array{page_views: int, visitors: array<string, bool>}> $days */
+        $days = [];
+        for ($offset = 29; $offset >= 0; --$offset) {
+            $date = $now->modify(sprintf('-%d days', $offset))->format('Y-m-d');
+            $days[$date] = ['page_views' => 0, 'visitors' => []];
+        }
+
+        $p7 = ['views' => 0, 'visitors' => [], 'sources' => [], 'referrers' => [], 'paths' => []];
+        $p30 = ['views' => 0, 'visitors' => [], 'sources' => [], 'referrers' => [], 'paths' => []];
+
+        if (file_exists($this->filePath)) {
+            $handle = @fopen($this->filePath, 'rb');
+            if ($handle !== false) {
+                while (($line = fgets($handle)) !== false) {
+                    $line = trim($line);
+                    if ($line === '') {
+                        continue;
+                    }
+                    try {
+                        /** @var array<string, mixed> $data */
+                        $data = json_decode($line, true, flags: JSON_THROW_ON_ERROR);
+                        if (!is_array($data)) {
+                            continue;
+                        }
+                        $occurredAt = new \DateTimeImmutable((string) ($data['timestamp'] ?? 'now'));
+                        if ($occurredAt < $thirtyDaysAgo) {
+                            continue;
+                        }
+
+                        $visitorHash = (string) ($data['visitor_hash'] ?? '');
+                        $source = (string) ($data['source'] ?? 'direct');
+                        $referrerHost = isset($data['referrer_host']) && is_string($data['referrer_host']) && $data['referrer_host'] !== '' ? $data['referrer_host'] : null;
+                        $path = (string) ($data['path'] ?? '/');
+                        $date = $occurredAt->format('Y-m-d');
+
+                        // 30 days
+                        ++$p30['views'];
+                        $p30['visitors'][$visitorHash] = true;
+                        $p30['sources'][$source] = ($p30['sources'][$source] ?? 0) + 1;
+                        if ($referrerHost !== null) {
+                            $p30['referrers'][$referrerHost] = ($p30['referrers'][$referrerHost] ?? 0) + 1;
+                        }
+                        $p30['paths'][$path] = ($p30['paths'][$path] ?? 0) + 1;
+
+                        // 7 days
+                        if ($occurredAt >= $sevenDaysAgo) {
+                            ++$p7['views'];
+                            $p7['visitors'][$visitorHash] = true;
+                            $p7['sources'][$source] = ($p7['sources'][$source] ?? 0) + 1;
+                            if ($referrerHost !== null) {
+                                $p7['referrers'][$referrerHost] = ($p7['referrers'][$referrerHost] ?? 0) + 1;
+                            }
+                            $p7['paths'][$path] = ($p7['paths'][$path] ?? 0) + 1;
+                        }
+
+                        // Daily
+                        if (isset($days[$date])) {
+                            ++$days[$date]['page_views'];
+                            $days[$date]['visitors'][$visitorHash] = true;
+                        }
+                    } catch (\Throwable) {
+                        continue;
+                    }
+                }
+                fclose($handle);
+            }
+        }
+
+        $sortTop = static function (array $items): array {
+            arsort($items);
+
+            return array_slice($items, 0, 10, true);
+        };
+
+        $daily = [];
+        foreach ($days as $date => $data) {
+            $daily[] = [
+                'date' => $date,
+                'page_views' => $data['page_views'],
+                'unique_visitors' => count($data['visitors']),
+            ];
+        }
+
+        return [
+            'privacy' => 'Cookie-free aggregates. IP addresses, query strings and full referrers are never stored.',
+            'last_7_days' => [
+                'page_views' => $p7['views'],
+                'unique_visitors' => count($p7['visitors']),
+                'sources' => $sortTop($p7['sources']),
+                'referring_domains' => $sortTop($p7['referrers']),
+                'top_paths' => $sortTop($p7['paths']),
+            ],
+            'last_30_days' => [
+                'page_views' => $p30['views'],
+                'unique_visitors' => count($p30['visitors']),
+                'sources' => $sortTop($p30['sources']),
+                'referring_domains' => $sortTop($p30['referrers']),
+                'top_paths' => $sortTop($p30['paths']),
+            ],
+            'daily' => $daily,
+        ];
+    }
+
     public function prune(\DateTimeImmutable $now): int
     {
         if (!file_exists($this->filePath)) {
