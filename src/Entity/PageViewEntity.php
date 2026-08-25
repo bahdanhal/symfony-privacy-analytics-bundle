@@ -11,6 +11,8 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'page_views')]
 #[ORM\Index(columns: ['occurred_at'], name: 'idx_page_views_occurred_at')]
 #[ORM\Index(columns: ['path'], name: 'idx_page_views_path')]
+#[ORM\Index(columns: ['occurred_at', 'source'], name: 'idx_page_views_occurred_at_source')]
+#[ORM\Index(columns: ['occurred_at', 'referrer_host'], name: 'idx_page_views_occurred_at_referrer')]
 class PageViewEntity
 {
     #[ORM\Id]

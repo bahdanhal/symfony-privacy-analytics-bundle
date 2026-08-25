@@ -32,6 +32,14 @@ final class DoctrinePageViewRepositoryTest extends TestCase
         (new SchemaTool($entityManager))->createSchema([
             $entityManager->getClassMetadata(PageViewEntity::class),
         ]);
+        $indexes = $connection->createSchemaManager()->listTableIndexes('page_views');
+        self::assertArrayHasKey('idx_page_views_occurred_at_source', $indexes);
+        self::assertSame(['occurred_at', 'source'], $indexes['idx_page_views_occurred_at_source']->getColumns());
+        self::assertArrayHasKey('idx_page_views_occurred_at_referrer', $indexes);
+        self::assertSame(
+            ['occurred_at', 'referrer_host'],
+            $indexes['idx_page_views_occurred_at_referrer']->getColumns(),
+        );
         $repository = new DoctrinePageViewRepository($entityManager);
         $now = new \DateTimeImmutable('2026-08-25 12:00:00+02:00');
 
