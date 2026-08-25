@@ -12,6 +12,7 @@
     "require": {
         "php": ">=8.3",
         "symfony/config": "^7.0 || ^8.0",
+        "symfony/cache-contracts": "^3.0",
         "symfony/dependency-injection": "^7.0 || ^8.0",
         "symfony/event-dispatcher": "^7.0 || ^8.0",
         "symfony/http-foundation": "^7.0 || ^8.0",
@@ -25,7 +26,8 @@
     },
     "suggest": {
         "doctrine/dbal": "Required when using Doctrine storage.",
-        "doctrine/orm": "Required when using Doctrine storage."
+        "doctrine/orm": "Required when using Doctrine storage.",
+        "symfony/messenger": "Required for asynchronous analytics ingestion."
     },
     "autoload": {
         "psr-4": {

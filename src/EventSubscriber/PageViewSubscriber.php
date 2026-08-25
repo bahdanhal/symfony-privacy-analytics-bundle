@@ -6,12 +6,14 @@ namespace Bahdan\PrivacyAnalyticsBundle\EventSubscriber;
 
 use Bahdan\PrivacyAnalyticsBundle\Domain\PageView;
 use Bahdan\PrivacyAnalyticsBundle\Domain\PageViewRepository;
+use Bahdan\PrivacyAnalyticsBundle\Message\RecordPageView;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\KernelEvent;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\Event\TerminateEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 final readonly class PageViewSubscriber implements EventSubscriberInterface
 {
@@ -21,6 +23,8 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
     public function __construct(
         private PageViewRepository $pageViews,
         private string $secret,
+        private array $customBotPatterns = [],
+        private ?MessageBusInterface $messageBus = null,
     ) {
     }
 
@@ -56,13 +60,21 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
         $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
         $dateSalt = $now->format('Y-m-d');
 
-        $this->pageViews->save(new PageView(
+        $pageView = new PageView(
             $now,
             hash_hmac('sha256', $dateSalt . '|' . $clientIp . '|' . $userAgent, $this->secret),
             $this->normalizedPath($request->getPathInfo()),
             $source,
             $referrerHost,
-        ));
+        );
+
+        if ($this->messageBus !== null) {
+            $this->messageBus->dispatch(RecordPageView::fromPageView($pageView));
+
+            return;
+        }
+
+        $this->pageViews->save($pageView);
     }
 
     /**
@@ -95,7 +107,20 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
             || $request->headers->get('DNT') === '1'
             || $request->headers->get('Sec-GPC') === '1'
             || preg_match(self::PROBE_PATH_PATTERN, $requestUriPath) === 1
-            || preg_match(self::BOT_PATTERN, $userAgent) === 1;
+            || preg_match(self::BOT_PATTERN, $userAgent) === 1
+            || $this->matchesCustomBotPattern($userAgent);
+    }
+
+    private function matchesCustomBotPattern(string $userAgent): bool
+    {
+        foreach ($this->customBotPatterns as $pattern) {
+            $pattern = strtolower(trim((string) $pattern));
+            if ($pattern !== '' && str_contains($userAgent, $pattern)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return array{string, ?string} */

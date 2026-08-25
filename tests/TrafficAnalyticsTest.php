@@ -8,6 +8,7 @@ use Bahdan\PrivacyAnalyticsBundle\Application\TrafficAnalytics;
 use Bahdan\PrivacyAnalyticsBundle\Domain\PageView;
 use Bahdan\PrivacyAnalyticsBundle\Infrastructure\JsonlPageViewRepository;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 
 final class TrafficAnalyticsTest extends TestCase
 {
@@ -83,5 +84,18 @@ final class TrafficAnalyticsTest extends TestCase
         $views = $repository->since($now->modify('-60 days'));
         self::assertCount(2, $views);
         self::assertSame(['/legacy', '/new'], array_map(static fn (PageView $view): string => $view->path, $views));
+    }
+
+    public function testCachesRepeatedSummaryRequests(): void
+    {
+        $repository = $this->createMock(\Bahdan\PrivacyAnalyticsBundle\Domain\PageViewRepository::class);
+        $repository->expects(self::once())
+            ->method('summary')
+            ->willReturn(['cached' => true]);
+        $analytics = new TrafficAnalytics($repository, new ArrayAdapter(), 60);
+        $now = new \DateTimeImmutable('2026-08-25 12:00:00 UTC');
+
+        self::assertSame(['cached' => true], $analytics->summary($now));
+        self::assertSame(['cached' => true], $analytics->summary($now));
     }
 }

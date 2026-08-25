@@ -34,6 +34,20 @@ final class Configuration implements ConfigurationInterface
                     ->min(1)
                     ->info('Retention period in days for page view logs.')
                 ->end()
+                ->booleanNode('async')
+                    ->defaultFalse()
+                    ->info('Dispatch page-view writes through Symfony Messenger.')
+                ->end()
+                ->arrayNode('custom_bot_patterns')
+                    ->scalarPrototype()->end()
+                    ->defaultValue([])
+                    ->info('Additional case-insensitive user-agent substrings to exclude.')
+                ->end()
+                ->integerNode('summary_cache_ttl')
+                    ->defaultValue(60)
+                    ->min(0)
+                    ->info('Seconds to cache dashboard summaries; set to zero to disable caching.')
+                ->end()
             ->end();
 
         return $treeBuilder;

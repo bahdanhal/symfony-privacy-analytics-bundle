@@ -12,6 +12,8 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Extension\Extension;
 
 final class PageViewSubscriberTest extends TestCase
 {
@@ -203,6 +205,43 @@ final class PageViewSubscriberTest extends TestCase
         self::assertCount(1, $repository->saved);
     }
 
+    public function testCustomBotPatternExcludesMatchingUserAgent(): void
+    {
+        $repository = new class implements PageViewRepository {
+            /** @var list<PageView> */
+            public array $saved = [];
+
+            public function save(PageView $pageView): void
+            {
+                $this->saved[] = $pageView;
+            }
+
+            public function since(\DateTimeImmutable $since): array
+            {
+                return $this->saved;
+            }
+
+            public function prune(\DateTimeImmutable $now): int
+            {
+                return 0;
+            }
+
+            public function summary(\DateTimeImmutable $now): array
+            {
+                return [];
+            }
+        };
+        $subscriber = new PageViewSubscriber($repository, 'secret-key-123', ['CompanyHealthCheck']);
+        $kernel = $this->createStub(HttpKernelInterface::class);
+        $request = Request::create('https://bahdanhal.pl/tools', 'GET');
+        $request->headers->set('User-Agent', 'Mozilla/5.0 CompanyHealthCheck/1.0');
+        $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
+
+        $subscriber->onResponse(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
+
+        self::assertCount(0, $repository->saved);
+    }
+
     public function testDependencyInjectionExtension(): void
     {
         $container = new \Symfony\Component\DependencyInjection\ContainerBuilder();
@@ -221,5 +260,29 @@ final class PageViewSubscriberTest extends TestCase
         self::assertTrue($container->hasAlias(\Bahdan\PrivacyAnalyticsBundle\Domain\PageViewRepository::class));
         self::assertFalse($container->hasDefinition(\Bahdan\PrivacyAnalyticsBundle\Infrastructure\DoctrinePageViewRepository::class));
         $container->compile();
+    }
+
+    public function testBundlePrependsDoctrineMappingWhenDoctrineIsAvailable(): void
+    {
+        $container = new ContainerBuilder();
+        $container->registerExtension(new class extends Extension {
+            public function load(array $configs, ContainerBuilder $container): void
+            {
+            }
+
+            public function getAlias(): string
+            {
+                return 'doctrine';
+            }
+        });
+
+        (new \Bahdan\PrivacyAnalyticsBundle\PrivacyAnalyticsBundle())->prepend($container);
+
+        $config = $container->getExtensionConfig('doctrine')[0];
+        self::assertSame('attribute', $config['orm']['mappings']['PrivacyAnalyticsBundle']['type']);
+        self::assertSame(
+            'Bahdan\\PrivacyAnalyticsBundle\\Entity',
+            $config['orm']['mappings']['PrivacyAnalyticsBundle']['prefix'],
+        );
     }
 }

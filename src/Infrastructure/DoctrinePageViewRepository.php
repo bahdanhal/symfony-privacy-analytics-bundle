@@ -8,6 +8,7 @@ use Bahdan\PrivacyAnalyticsBundle\Domain\PageView;
 use Bahdan\PrivacyAnalyticsBundle\Domain\PageViewRepository;
 use Bahdan\PrivacyAnalyticsBundle\Entity\PageViewEntity;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManagerInterface;
 
 final readonly class DoctrinePageViewRepository implements PageViewRepository
@@ -21,11 +22,13 @@ final readonly class DoctrinePageViewRepository implements PageViewRepository
     public function save(PageView $pageView): void
     {
         $this->entityManager->getConnection()->insert('page_views', [
-            'occurred_at' => $pageView->occurredAt->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:sP'),
+            'occurred_at' => $pageView->occurredAt->setTimezone(new \DateTimeZone('UTC')),
             'visitor_hash' => $pageView->visitorHash,
             'path' => $pageView->path,
             'source' => $pageView->source,
             'referrer_host' => $pageView->referrerHost,
+        ], [
+            'occurred_at' => Types::DATETIMETZ_IMMUTABLE,
         ]);
     }
 
@@ -195,7 +198,11 @@ final readonly class DoctrinePageViewRepository implements PageViewRepository
             ->select($dateExpression . ' AS day', 'COUNT(*) AS page_views', 'COUNT(DISTINCT visitor_hash) AS unique_visitors')
             ->from('page_views')
             ->where('occurred_at >= :since')
-            ->setParameter('since', $thirtyDaysAgo->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:sP'))
+            ->setParameter(
+                'since',
+                $thirtyDaysAgo->setTimezone(new \DateTimeZone('UTC')),
+                Types::DATETIMETZ_IMMUTABLE,
+            )
             ->groupBy($dateExpression)
             ->orderBy('day', 'ASC')
             ->executeQuery()

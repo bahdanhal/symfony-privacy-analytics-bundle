@@ -31,7 +31,7 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
     public function since(\DateTimeImmutable $since): array
     {
         $views = [];
-        foreach ($this->filePaths() as $filePath) {
+        foreach ($this->filePaths($since) as $filePath) {
             $handle = @fopen($filePath, 'rb');
             if ($handle === false) {
                 continue;
@@ -97,7 +97,7 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
         $p7 = ['views' => 0, 'visitors' => [], 'sources' => [], 'referrers' => [], 'paths' => []];
         $p30 = ['views' => 0, 'visitors' => [], 'sources' => [], 'referrers' => [], 'paths' => []];
 
-        foreach ($this->filePaths() as $filePath) {
+        foreach ($this->filePaths($thirtyDaysAgo) as $filePath) {
             $handle = @fopen($filePath, 'rb');
             if ($handle !== false) {
                 @flock($handle, LOCK_SH);
@@ -259,9 +259,22 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
     }
 
     /** @return list<string> */
-    private function filePaths(): array
+    private function filePaths(?\DateTimeImmutable $since = null): array
     {
         $paths = glob($this->directory . '/page-views-*.jsonl') ?: [];
+        if ($since !== null) {
+            $firstMonth = $since->format('Y-m');
+            $paths = array_values(array_filter(
+                $paths,
+                static function (string $path) use ($firstMonth): bool {
+                    if (preg_match('/page-views-(\d{4}-\d{2})\.jsonl$/', basename($path), $matches) !== 1) {
+                        return false;
+                    }
+
+                    return $matches[1] >= $firstMonth;
+                },
+            ));
+        }
         $legacyPath = $this->directory . '/page-views.jsonl';
         if (is_file($legacyPath)) {
             $paths[] = $legacyPath;

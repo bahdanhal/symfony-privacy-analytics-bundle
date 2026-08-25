@@ -9,10 +9,14 @@ use Bahdan\PrivacyAnalyticsBundle\Domain\PageViewRepository;
 use Bahdan\PrivacyAnalyticsBundle\EventSubscriber\PageViewSubscriber;
 use Bahdan\PrivacyAnalyticsBundle\Infrastructure\DoctrinePageViewRepository;
 use Bahdan\PrivacyAnalyticsBundle\Infrastructure\JsonlPageViewRepository;
+use Bahdan\PrivacyAnalyticsBundle\MessageHandler\RecordPageViewHandler;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Contracts\Cache\CacheInterface;
 
 final class PrivacyAnalyticsExtension extends Extension
 {
@@ -20,7 +24,7 @@ final class PrivacyAnalyticsExtension extends Extension
     public function load(array $configs, ContainerBuilder $container): void
     {
         $configuration = new Configuration();
-        /** @var array{secret: string, storage: string, storage_directory: string, retention_days: int} $config */
+        /** @var array{secret: string, storage: string, storage_directory: string, retention_days: int, async: bool, custom_bot_patterns: list<string>, summary_cache_ttl: int} $config */
         $config = $this->processConfiguration($configuration, $configs);
 
         $jsonlDefinition = new Definition(JsonlPageViewRepository::class, [
@@ -47,6 +51,8 @@ final class PrivacyAnalyticsExtension extends Extension
 
         $trafficAnalyticsDefinition = new Definition(TrafficAnalytics::class, [
             new Reference(PageViewRepository::class),
+            new Reference(CacheInterface::class, ContainerInterface::NULL_ON_INVALID_REFERENCE),
+            $config['summary_cache_ttl'],
         ]);
         $trafficAnalyticsDefinition->setAutowired(true);
         $trafficAnalyticsDefinition->setAutoconfigured(true);
@@ -56,11 +62,27 @@ final class PrivacyAnalyticsExtension extends Extension
         $subscriberDefinition = new Definition(PageViewSubscriber::class, [
             new Reference(PageViewRepository::class),
             $config['secret'],
+            $config['custom_bot_patterns'],
+            $config['async'] ? new Reference(MessageBusInterface::class) : null,
         ]);
         $subscriberDefinition->setAutowired(true);
         $subscriberDefinition->setAutoconfigured(true);
         $subscriberDefinition->addTag('kernel.event_subscriber');
         $container->setDefinition(PageViewSubscriber::class, $subscriberDefinition);
+
+        if ($config['async']) {
+            if (!interface_exists(MessageBusInterface::class)) {
+                throw new \LogicException('Install symfony/messenger before enabling privacy_analytics.async.');
+            }
+
+            $handlerDefinition = new Definition(RecordPageViewHandler::class, [
+                new Reference(PageViewRepository::class),
+            ]);
+            $handlerDefinition->setAutowired(true);
+            $handlerDefinition->setAutoconfigured(true);
+            $handlerDefinition->addTag('messenger.message_handler');
+            $container->setDefinition(RecordPageViewHandler::class, $handlerDefinition);
+        }
     }
 
     public function getAlias(): string
