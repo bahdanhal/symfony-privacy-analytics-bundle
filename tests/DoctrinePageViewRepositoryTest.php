@@ -23,7 +23,7 @@ final class DoctrinePageViewRepositoryTest extends TestCase
             isDevMode: true,
         );
         $configuration->setNamingStrategy(new UnderscoreNamingStrategy(CASE_LOWER));
-        $configuration->enableNativeLazyObjects(true);
+        $configuration->enableNativeLazyObjects(PHP_VERSION_ID >= 80400);
         $connection = DriverManager::getConnection([
             'driver' => 'pdo_sqlite',
             'memory' => true,
