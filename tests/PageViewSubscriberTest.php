@@ -52,7 +52,7 @@ final class PageViewSubscriberTest extends TestCase
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html; charset=UTF-8']);
 
         $event = new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response);
-        $subscriber->onResponse($event);
+        $subscriber->onTerminate($event);
 
         self::assertCount(1, $repository->saved);
         self::assertSame('/tools', $repository->saved[0]->path);
@@ -100,7 +100,7 @@ final class PageViewSubscriberTest extends TestCase
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
 
         $event = new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response);
-        $subscriber->onResponse($event);
+        $subscriber->onTerminate($event);
 
         self::assertCount(0, $repository->saved);
     }
@@ -163,7 +163,7 @@ final class PageViewSubscriberTest extends TestCase
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
 
         $event = new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response);
-        $subscriber->onResponse($event);
+        $subscriber->onTerminate($event);
 
         self::assertCount(1, $repository->saved);
     }
@@ -200,7 +200,7 @@ final class PageViewSubscriberTest extends TestCase
         $request->headers->set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15');
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
 
-        $subscriber->onResponse(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
+        $subscriber->onTerminate(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
 
         self::assertCount(1, $repository->saved);
     }
@@ -237,7 +237,7 @@ final class PageViewSubscriberTest extends TestCase
         $request->headers->set('User-Agent', 'Mozilla/5.0 CompanyHealthCheck/1.0');
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
 
-        $subscriber->onResponse(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
+        $subscriber->onTerminate(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
 
         self::assertCount(0, $repository->saved);
     }

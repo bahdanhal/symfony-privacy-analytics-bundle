@@ -77,14 +77,6 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
         $this->pageViews->save($pageView);
     }
 
-    /**
-     * Alias for backward-compatibility in tests.
-     */
-    public function onResponse(ResponseEvent $event): void
-    {
-        $this->onTerminate($event);
-    }
-
     private const string BOT_PATTERN = '/bot|crawler|spider|slurp|preview|facebookexternalhit'
         . '|googleother|google-inspectiontool|bahdantoolbox|cms-checker|crt-indexer'
         . '|domainintelcollector|sparixemailscraper|wp-safe-scanner|internetmeasurement'
