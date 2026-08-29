@@ -59,6 +59,47 @@ final class PageViewSubscriberTest extends TestCase
         self::assertSame('direct', $repository->saved[0]->source);
     }
 
+    public function testClassifiesBaiduAndSearchEnginesAsSearchSource(): void
+    {
+        $repository = new class implements PageViewRepository {
+            /** @var list<PageView> */
+            public array $saved = [];
+
+            public function save(PageView $pageView): void
+            {
+                $this->saved[] = $pageView;
+            }
+
+            public function since(\DateTimeImmutable $since): array
+            {
+                return $this->saved;
+            }
+
+            public function prune(\DateTimeImmutable $now): int
+            {
+                return 0;
+            }
+
+            public function summary(\DateTimeImmutable $now): array
+            {
+                return [];
+            }
+        };
+
+        $subscriber = new PageViewSubscriber($repository, 'secret-key-123');
+        $kernel = $this->createStub(HttpKernelInterface::class);
+
+        $request = Request::create('https://stackhal.com/', 'GET', server: ['HTTP_REFERER' => 'https://www.baidu.com/s?wd=stackhal']);
+        $request->headers->set('User-Agent', 'Mozilla/5.0');
+        $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
+
+        $subscriber->onTerminate(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
+
+        self::assertCount(1, $repository->saved);
+        self::assertSame('search', $repository->saved[0]->source);
+        self::assertSame('baidu.com', $repository->saved[0]->referrerHost);
+    }
+
     /**
      * @param array<string, string> $headers
      */

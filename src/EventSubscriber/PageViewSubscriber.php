@@ -17,8 +17,8 @@ use Symfony\Component\Messenger\MessageBusInterface;
 
 final readonly class PageViewSubscriber implements EventSubscriberInterface
 {
-    private const array SEARCH_HOSTS = ['google.', 'bing.com', 'duckduckgo.com', 'yahoo.', 'yandex.', 'ecosia.org'];
-    private const array SOCIAL_HOSTS = ['facebook.com', 'instagram.com', 'linkedin.com', 't.co', 'x.com', 'reddit.com'];
+    private const array SEARCH_HOSTS = ['google.', 'bing.com', 'duckduckgo.com', 'baidu.', 'yahoo.', 'yandex.', 'ecosia.org', 'qwant.com', 'brave.com', 'seznam.cz', 'naver.com', 'sogou.com'];
+    private const array SOCIAL_HOSTS = ['facebook.com', 'instagram.com', 'linkedin.com', 't.co', 'x.com', 'reddit.com', 'youtube.com', 'tiktok.com', 'threads.net', 'bsky.app'];
 
     public function __construct(
         private PageViewRepository $pageViews,
