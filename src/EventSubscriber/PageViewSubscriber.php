@@ -100,7 +100,35 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
             || $request->headers->get('Sec-GPC') === '1'
             || preg_match(self::PROBE_PATH_PATTERN, $requestUriPath) === 1
             || preg_match(self::BOT_PATTERN, $userAgent) === 1
-            || $this->matchesCustomBotPattern($userAgent);
+            || $this->matchesCustomBotPattern($userAgent)
+            || $this->hasSpoofedBrowserHeaders($request, $userAgent);
+    }
+
+    private function hasSpoofedBrowserHeaders(Request $request, string $userAgent): bool
+    {
+        $isClaimingBrowser = str_contains($userAgent, 'mozilla/')
+            || str_contains($userAgent, 'chrome/')
+            || str_contains($userAgent, 'safari/')
+            || str_contains($userAgent, 'firefox/')
+            || str_contains($userAgent, 'edg/');
+
+        if (!$isClaimingBrowser) {
+            return false;
+        }
+
+        // 1. Every authentic browser navigation provides an Accept-Language header.
+        $acceptLanguage = trim((string) $request->headers->get('Accept-Language'));
+        if ($acceptLanguage === '') {
+            return true;
+        }
+
+        // 2. Automated scanners claiming to be a browser often send "Accept: */*" or omit text/html.
+        $accept = strtolower(trim((string) $request->headers->get('Accept')));
+        if ($accept === '*/*') {
+            return true;
+        }
+
+        return false;
     }
 
     private function matchesCustomBotPattern(string $userAgent): bool

@@ -48,7 +48,9 @@ final class PageViewSubscriberTest extends TestCase
 
         $kernel = $this->createStub(HttpKernelInterface::class);
         $request = Request::create('https://bahdanhal.pl/tools', 'GET');
-        $request->headers->set('User-Agent', 'Mozilla/5.0');
+        $request->headers->set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        $request->headers->set('Accept-Language', 'en-US,en;q=0.9');
+        $request->headers->set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html; charset=UTF-8']);
 
         $event = new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response);
@@ -90,7 +92,9 @@ final class PageViewSubscriberTest extends TestCase
         $kernel = $this->createStub(HttpKernelInterface::class);
 
         $request = Request::create('https://stackhal.com/', 'GET', server: ['HTTP_REFERER' => 'https://www.baidu.com/s?wd=stackhal']);
-        $request->headers->set('User-Agent', 'Mozilla/5.0');
+        $request->headers->set('User-Agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36');
+        $request->headers->set('Accept-Language', 'zh-CN,zh;q=0.9,en;q=0.8');
+        $request->headers->set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
 
         $subscriber->onTerminate(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
@@ -135,6 +139,8 @@ final class PageViewSubscriberTest extends TestCase
 
         $kernel = $this->createStub(HttpKernelInterface::class);
         $request = Request::create('https://bahdanhal.pl' . $uri, 'GET');
+        $request->headers->remove('Accept-Language');
+        $request->headers->remove('Accept');
         foreach ($headers as $name => $value) {
             $request->headers->set($name, $value);
         }
@@ -164,10 +170,12 @@ final class PageViewSubscriberTest extends TestCase
         yield 'puppeteer automation' => ['/tools', [
             'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Puppeteer/19.0.0 Safari/537.36',
         ]];
-        yield 'do not track' => ['/tools', ['User-Agent' => 'Mozilla/5.0', 'DNT' => '1']];
-        yield 'global privacy control' => ['/tools', ['User-Agent' => 'Mozilla/5.0', 'Sec-GPC' => '1']];
-        yield 'WordPress probe' => ['/wp-content/themes/index.php', ['User-Agent' => 'Mozilla/5.0']];
-        yield 'environment file probe' => ['/.env', ['User-Agent' => 'Mozilla/5.0']];
+        yield 'do not track' => ['/tools', ['User-Agent' => 'Mozilla/5.0', 'Accept-Language' => 'en-US', 'DNT' => '1']];
+        yield 'global privacy control' => ['/tools', ['User-Agent' => 'Mozilla/5.0', 'Accept-Language' => 'en-US', 'Sec-GPC' => '1']];
+        yield 'WordPress probe' => ['/wp-content/themes/index.php', ['User-Agent' => 'Mozilla/5.0', 'Accept-Language' => 'en-US']];
+        yield 'environment file probe' => ['/.env', ['User-Agent' => 'Mozilla/5.0', 'Accept-Language' => 'en-US']];
+        yield 'spoofed browser missing accept-language' => ['/tools', ['User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36']];
+        yield 'spoofed browser with wildcard accept' => ['/tools', ['User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36', 'Accept-Language' => 'en-US', 'Accept' => '*/*']];
     }
 
     public function testAllowsStandardChromiumUserAgent(): void
@@ -201,6 +209,8 @@ final class PageViewSubscriberTest extends TestCase
         $kernel = $this->createStub(HttpKernelInterface::class);
         $request = Request::create('https://bahdanhal.pl/tools', 'GET');
         $request->headers->set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        $request->headers->set('Accept-Language', 'en-US,en;q=0.9');
+        $request->headers->set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
 
         $event = new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response);
@@ -239,6 +249,8 @@ final class PageViewSubscriberTest extends TestCase
         $kernel = $this->createStub(HttpKernelInterface::class);
         $request = Request::create('https://bahdanhal.pl/tools', 'GET');
         $request->headers->set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15');
+        $request->headers->set('Accept-Language', 'en-US,en;q=0.9');
+        $request->headers->set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
 
         $subscriber->onTerminate(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
