@@ -30,7 +30,8 @@ interface PageViewRepository
      *         referring_domains: array<string, int>,
      *         top_paths: array<string, int>
      *     },
-     *     daily: list<array{date: string, page_views: int, unique_visitors: int}>
+     *     daily: list<array{date: string, page_views: int, unique_visitors: int, top_paths: array<string, int>}>,
+     *     weekly: list<array{week: string, start_date: string, end_date: string, page_views: int, unique_visitors: int, top_paths: array<string, int>}>
      * }
      */
     public function summary(\DateTimeImmutable $now): array;

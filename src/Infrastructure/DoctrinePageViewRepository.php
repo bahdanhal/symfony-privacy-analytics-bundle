@@ -73,7 +73,8 @@ final readonly class DoctrinePageViewRepository implements PageViewRepository
      *         referring_domains: array<string, int>,
      *         top_paths: array<string, int>
      *     },
-     *     daily: list<array{date: string, page_views: int, unique_visitors: int}>
+     *     daily: list<array{date: string, page_views: int, unique_visitors: int, top_paths: array<string, int>}>,
+     *     weekly: list<array{week: string, start_date: string, end_date: string, page_views: int, unique_visitors: int, top_paths: array<string, int>}>
      * }
      */
     public function summary(\DateTimeImmutable $now): array
@@ -86,6 +87,7 @@ final readonly class DoctrinePageViewRepository implements PageViewRepository
             'last_7_days' => $this->aggregatePeriod($sevenDaysAgo),
             'last_30_days' => $this->aggregatePeriod($thirtyDaysAgo),
             'daily' => $this->aggregateDaily($now, $thirtyDaysAgo),
+            'weekly' => $this->aggregateWeekly($now, $thirtyDaysAgo),
         ];
     }
 
@@ -178,7 +180,7 @@ final readonly class DoctrinePageViewRepository implements PageViewRepository
     }
 
     /**
-     * @return list<array{date: string, page_views: int, unique_visitors: int}>
+     * @return list<array{date: string, page_views: int, unique_visitors: int, top_paths: array<string, int>}>
      */
     private function aggregateDaily(\DateTimeImmutable $now, \DateTimeImmutable $thirtyDaysAgo): array
     {
@@ -217,16 +219,130 @@ final readonly class DoctrinePageViewRepository implements PageViewRepository
             $days[$date]['unique_visitors'] = (int) $record['unique_visitors'];
         }
 
+        /** @var list<array{day: mixed, path: mixed, cnt: mixed}> $pathRecords */
+        $pathRecords = $this->entityManager->getConnection()->createQueryBuilder()
+            ->select($dateExpression . ' AS day', 'path', 'COUNT(*) AS cnt')
+            ->from('page_views')
+            ->where('occurred_at >= :since')
+            ->setParameter(
+                'since',
+                $thirtyDaysAgo->setTimezone(new \DateTimeZone('UTC')),
+                Types::DATETIMETZ_IMMUTABLE,
+            )
+            ->groupBy($dateExpression, 'path')
+            ->orderBy('day', 'ASC')
+            ->addOrderBy('cnt', 'DESC')
+            ->executeQuery()
+            ->fetchAllAssociative();
+
+        /** @var array<string, array<string, int>> $dailyPaths */
+        $dailyPaths = [];
+        foreach ($pathRecords as $row) {
+            $date = substr((string) $row['day'], 0, 10);
+            $path = trim((string) $row['path']);
+            if ($path === '' || !isset($days[$date])) {
+                continue;
+            }
+            if (!isset($dailyPaths[$date])) {
+                $dailyPaths[$date] = [];
+            }
+            if (count($dailyPaths[$date]) < 10) {
+                $dailyPaths[$date][$path] = (int) $row['cnt'];
+            }
+        }
+
         $result = [];
         foreach ($days as $date => $data) {
             $result[] = [
                 'date' => $date,
                 'page_views' => $data['page_views'],
                 'unique_visitors' => $data['unique_visitors'],
+                'top_paths' => $dailyPaths[$date] ?? [],
             ];
         }
 
         return $result;
+    }
+
+    /**
+     * @return list<array{week: string, start_date: string, end_date: string, page_views: int, unique_visitors: int, top_paths: array<string, int>}>
+     */
+    private function aggregateWeekly(\DateTimeImmutable $now, \DateTimeImmutable $thirtyDaysAgo): array
+    {
+        /** @var array<string, array{week: string, start_date: string, end_date: string, page_views: int, unique_visitors: int, top_paths: array<string, int>}> $weeks */
+        $weeks = [];
+        $earliestDay = $now->modify('-29 days');
+        $cursor = $earliestDay->modify('Monday this week');
+        $endSunday = $now->modify('Sunday this week');
+        while ($cursor <= $endSunday) {
+            $weekKey = $cursor->format('o-\WW');
+            $weeks[$weekKey] = [
+                'week' => $weekKey,
+                'start_date' => $cursor->format('Y-m-d'),
+                'end_date' => $cursor->modify('+6 days')->format('Y-m-d'),
+                'page_views' => 0,
+                'unique_visitors' => 0,
+                'top_paths' => [],
+            ];
+            $cursor = $cursor->modify('+7 days');
+        }
+
+        $weekExpression = $this->entityManager->getConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform
+            ? "TO_CHAR(DATE_TRUNC('week', occurred_at AT TIME ZONE 'UTC'), 'IYYY') || '-W' || TO_CHAR(DATE_TRUNC('week', occurred_at AT TIME ZONE 'UTC'), 'IW')"
+            : "strftime('%Y-W%V', occurred_at)";
+
+        /** @var list<array{week: mixed, page_views: mixed, unique_visitors: mixed}> $records */
+        $records = $this->entityManager->getConnection()->createQueryBuilder()
+            ->select($weekExpression . ' AS week', 'COUNT(*) AS page_views', 'COUNT(DISTINCT visitor_hash) AS unique_visitors')
+            ->from('page_views')
+            ->where('occurred_at >= :since')
+            ->setParameter(
+                'since',
+                $thirtyDaysAgo->setTimezone(new \DateTimeZone('UTC')),
+                Types::DATETIMETZ_IMMUTABLE,
+            )
+            ->groupBy($weekExpression)
+            ->orderBy('week', 'ASC')
+            ->executeQuery()
+            ->fetchAllAssociative();
+
+        foreach ($records as $record) {
+            $weekKey = (string) $record['week'];
+            if (!isset($weeks[$weekKey])) {
+                continue;
+            }
+            $weeks[$weekKey]['page_views'] = (int) $record['page_views'];
+            $weeks[$weekKey]['unique_visitors'] = (int) $record['unique_visitors'];
+        }
+
+        /** @var list<array{week: mixed, path: mixed, cnt: mixed}> $pathRecords */
+        $pathRecords = $this->entityManager->getConnection()->createQueryBuilder()
+            ->select($weekExpression . ' AS week', 'path', 'COUNT(*) AS cnt')
+            ->from('page_views')
+            ->where('occurred_at >= :since')
+            ->setParameter(
+                'since',
+                $thirtyDaysAgo->setTimezone(new \DateTimeZone('UTC')),
+                Types::DATETIMETZ_IMMUTABLE,
+            )
+            ->groupBy($weekExpression, 'path')
+            ->orderBy('week', 'ASC')
+            ->addOrderBy('cnt', 'DESC')
+            ->executeQuery()
+            ->fetchAllAssociative();
+
+        foreach ($pathRecords as $row) {
+            $weekKey = (string) $row['week'];
+            $path = trim((string) $row['path']);
+            if ($path === '' || !isset($weeks[$weekKey])) {
+                continue;
+            }
+            if (count($weeks[$weekKey]['top_paths']) < 10) {
+                $weeks[$weekKey]['top_paths'][$path] = (int) $row['cnt'];
+            }
+        }
+
+        return array_values($weeks);
     }
 
     public function prune(\DateTimeImmutable $now): int

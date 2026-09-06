@@ -79,7 +79,8 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
      *         referring_domains: array<string, int>,
      *         top_paths: array<string, int>
      *     },
-     *     daily: list<array{date: string, page_views: int, unique_visitors: int}>
+     *     daily: list<array{date: string, page_views: int, unique_visitors: int, top_paths: array<string, int>}>,
+     *     weekly: list<array{week: string, start_date: string, end_date: string, page_views: int, unique_visitors: int, top_paths: array<string, int>}>
      * }
      */
     public function summary(\DateTimeImmutable $now): array
@@ -87,11 +88,29 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
         $thirtyDaysAgo = $now->modify('-30 days');
         $sevenDaysAgo = $now->modify('-7 days');
 
-        /** @var array<string, array{page_views: int, visitors: array<string, bool>}> $days */
+        /** @var array<string, array{page_views: int, visitors: array<string, bool>, paths: array<string, int>}> $days */
         $days = [];
         for ($offset = 29; $offset >= 0; --$offset) {
             $date = $now->modify(sprintf('-%d days', $offset))->format('Y-m-d');
-            $days[$date] = ['page_views' => 0, 'visitors' => []];
+            $days[$date] = ['page_views' => 0, 'visitors' => [], 'paths' => []];
+        }
+
+        /** @var array<string, array{week: string, start_date: string, end_date: string, views: int, visitors: array<string, bool>, paths: array<string, int>}> $weeks */
+        $weeks = [];
+        $earliestDay = $now->modify('-29 days');
+        $cursor = $earliestDay->modify('Monday this week');
+        $endSunday = $now->modify('Sunday this week');
+        while ($cursor <= $endSunday) {
+            $weekKey = $cursor->format('o-\WW');
+            $weeks[$weekKey] = [
+                'week' => $weekKey,
+                'start_date' => $cursor->format('Y-m-d'),
+                'end_date' => $cursor->modify('+6 days')->format('Y-m-d'),
+                'views' => 0,
+                'visitors' => [],
+                'paths' => [],
+            ];
+            $cursor = $cursor->modify('+7 days');
         }
 
         $p7 = ['views' => 0, 'visitors' => [], 'sources' => [], 'referrers' => [], 'paths' => []];
@@ -122,6 +141,7 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
                         $referrerHost = isset($data['referrer_host']) && is_string($data['referrer_host']) && $data['referrer_host'] !== '' ? $data['referrer_host'] : null;
                         $path = (string) ($data['path'] ?? '/');
                         $date = $occurredAt->format('Y-m-d');
+                        $weekKey = $occurredAt->format('o-\WW');
 
                         // 30 days
                         ++$p30['views'];
@@ -147,6 +167,18 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
                         if (isset($days[$date])) {
                             ++$days[$date]['page_views'];
                             $days[$date]['visitors'][$visitorHash] = true;
+                            if ($path !== '') {
+                                $days[$date]['paths'][$path] = ($days[$date]['paths'][$path] ?? 0) + 1;
+                            }
+                        }
+
+                        // Weekly
+                        if (isset($weeks[$weekKey])) {
+                            ++$weeks[$weekKey]['views'];
+                            $weeks[$weekKey]['visitors'][$visitorHash] = true;
+                            if ($path !== '') {
+                                $weeks[$weekKey]['paths'][$path] = ($weeks[$weekKey]['paths'][$path] ?? 0) + 1;
+                            }
                         }
                     } catch (\Throwable) {
                         continue;
@@ -169,6 +201,19 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
                 'date' => $date,
                 'page_views' => $data['page_views'],
                 'unique_visitors' => count($data['visitors']),
+                'top_paths' => $sortTop($data['paths']),
+            ];
+        }
+
+        $weekly = [];
+        foreach ($weeks as $w) {
+            $weekly[] = [
+                'week' => $w['week'],
+                'start_date' => $w['start_date'],
+                'end_date' => $w['end_date'],
+                'page_views' => $w['views'],
+                'unique_visitors' => count($w['visitors']),
+                'top_paths' => $sortTop($w['paths']),
             ];
         }
 
@@ -189,6 +234,7 @@ final readonly class JsonlPageViewRepository implements PageViewRepository
                 'top_paths' => $sortTop($p30['paths']),
             ],
             'daily' => $daily,
+            'weekly' => $weekly,
         ];
     }
 

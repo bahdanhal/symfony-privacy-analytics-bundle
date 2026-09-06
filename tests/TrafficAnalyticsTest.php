@@ -62,6 +62,14 @@ final class TrafficAnalyticsTest extends TestCase
         self::assertSame(2, $summary['last_30_days']['top_paths']['/tools']);
         self::assertSame(1, $summary['last_30_days']['referring_domains']['google.com']);
         self::assertCount(30, $summary['daily']);
+        $today = $summary['daily'][29];
+        self::assertSame(1, $today['page_views']);
+        self::assertSame(['/tools' => 1], $today['top_paths']);
+        self::assertNotEmpty($summary['weekly']);
+        $currentWeek = end($summary['weekly']);
+        self::assertIsArray($currentWeek);
+        self::assertSame(2, $currentWeek['page_views']);
+        self::assertSame(['/tools' => 2], $currentWeek['top_paths']);
     }
 
     public function testPartitionsFilesAndStreamsPruningAcrossLegacyStorage(): void

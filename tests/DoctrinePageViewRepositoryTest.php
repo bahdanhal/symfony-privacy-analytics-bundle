@@ -53,8 +53,18 @@ final class DoctrinePageViewRepositoryTest extends TestCase
         self::assertSame($now->format('Y-m-d'), $today['date']);
         self::assertSame(2, $today['page_views']);
         self::assertSame(1, $today['unique_visitors']);
+        self::assertSame(1, $today['top_paths']['/one'] ?? null);
+        self::assertSame(1, $today['top_paths']['/two'] ?? null);
         self::assertSame(3, $summary['last_30_days']['page_views']);
         self::assertSame(2, $summary['last_30_days']['unique_visitors']);
+        self::assertNotEmpty($summary['weekly']);
+        $currentWeek = end($summary['weekly']);
+        self::assertIsArray($currentWeek);
+        self::assertArrayHasKey('top_paths', $currentWeek);
+        self::assertSame(2, $currentWeek['page_views']);
+        self::assertSame(1, $currentWeek['unique_visitors']);
+        self::assertSame(1, $currentWeek['top_paths']['/one'] ?? null);
+        self::assertSame(1, $currentWeek['top_paths']['/two'] ?? null);
 
         $entityManager->close();
     }
