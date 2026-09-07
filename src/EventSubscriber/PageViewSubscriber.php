@@ -81,7 +81,11 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
         . '|googleother|google-inspectiontool|bahdantoolbox|cms-checker|crt-indexer'
         . '|domainintelcollector|sparixemailscraper|wp-safe-scanner|internetmeasurement'
         . '|curl|wget|python|guzzle|axios|go-http-client|postman|headless|httpclient|java|php'
-        . '|headlesschrome|phantomjs|puppeteer|selenium|playwright/i';
+        . '|headlesschrome|phantomjs|puppeteer|selenium|playwright'
+        . '|cl0q|palo alto networks|dalvik|wordpress|forestengine|leakix|l9scan|databot'
+        . '|seranking|semrush|amazonbot|claudebot|chatgpt-user|ct-wp-scanner'
+        . '|iphone os 13_2_3 like mac os x|iphone os 26_3_0 like mac os x'
+        . '|android 7\.0; sm-g892a|android 16; sm-s931b/i';
 
     private const string PROBE_PATH_PATTERN = '#(?:^|/)(?:wp-admin|wp-content|wp-includes)(?:/|$)'
         . '|(?:^|/)(?:\.env|\.git)(?:/|$)|\.php(?:/|$)#i';
@@ -125,6 +129,38 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
         // 2. Automated scanners claiming to be a browser often send "Accept: */*" or omit text/html.
         $accept = strtolower(trim((string) $request->headers->get('Accept')));
         if ($accept === '*/*') {
+            return true;
+        }
+
+        // 3. Signed-Exchange mismatch: only Chromium browsers support SXG (application/signed-exchange).
+        // Automated scrapers often send Chromium default Accept header while setting User-Agent to Firefox or Safari.
+        if (str_contains($accept, 'application/signed-exchange')) {
+            $isChromium = str_contains($userAgent, 'chrome/')
+                || str_contains($userAgent, 'chromium/')
+                || str_contains($userAgent, 'edg/');
+            if (!$isChromium) {
+                return true;
+            }
+        }
+
+        // 4. Safari header integrity: authentic Safari requests never ask for image/apng or signed-exchange.
+        $isPureSafari = str_contains($userAgent, 'safari/')
+            && !str_contains($userAgent, 'chrome/')
+            && !str_contains($userAgent, 'chromium/')
+            && !str_contains($userAgent, 'edg/');
+        if ($isPureSafari && (str_contains($accept, 'image/apng') || str_contains($accept, 'signed-exchange'))) {
+            return true;
+        }
+
+        // 5. Modern Chromium (Chrome/Edge >= 80) sends fetch metadata headers on top-level document navigations.
+        // Automated scripts spoofing modern Chrome User-Agent without modern fetch metadata or Sec-CH headers are dropped.
+        if (
+            preg_match('/(?:chrome|chromium|edg)\/([0-9]+)/', $userAgent, $matches) === 1
+            && (int) $matches[1] >= 80
+            && !$request->headers->has('Sec-Fetch-Mode')
+            && !$request->headers->has('Sec-Fetch-Site')
+            && !$request->headers->has('Sec-CH-UA')
+        ) {
             return true;
         }
 

@@ -176,6 +176,26 @@ final class PageViewSubscriberTest extends TestCase
         yield 'environment file probe' => ['/.env', ['User-Agent' => 'Mozilla/5.0', 'Accept-Language' => 'en-US']];
         yield 'spoofed browser missing accept-language' => ['/tools', ['User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36']];
         yield 'spoofed browser with wildcard accept' => ['/tools', ['User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36', 'Accept-Language' => 'en-US', 'Accept' => '*/*']];
+        yield 'cl0q favicon grabber' => ['/tools', ['User-Agent' => 'cl0q-favicon-grabber/1.0 (+https://cl0q.com)']];
+        yield 'palo alto networks scanner' => ['/tools', ['User-Agent' => 'Hello from Palo Alto Networks, find out more about our scans']];
+        yield 'wordpress scanner' => ['/tools', ['User-Agent' => 'WordPress/6.4.3']];
+        yield 'dalvik runner' => ['/tools', ['User-Agent' => 'Dalvik/2.1.0 (Linux; U; Android 9.0; ZTE BA520 Build/MRA58K)']];
+        yield 'puppeteer default mobile emulation' => ['/tools', ['User-Agent' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15', 'Accept-Language' => 'en-US']];
+        yield 'firefox with chrome signed-exchange' => ['/tools', [
+            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
+            'Accept-Language' => 'en-US',
+            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        ]];
+        yield 'safari with chrome signed-exchange' => ['/tools', [
+            'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+            'Accept-Language' => 'en-US',
+            'Accept' => 'text/html,application/xhtml+xml,application/signed-exchange;v=b3;q=0.7',
+        ]];
+        yield 'modern chromium without sec headers' => ['/tools', [
+            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language' => 'en-US',
+            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        ]];
     }
 
     public function testAllowsStandardChromiumUserAgent(): void
@@ -211,6 +231,8 @@ final class PageViewSubscriberTest extends TestCase
         $request->headers->set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         $request->headers->set('Accept-Language', 'en-US,en;q=0.9');
         $request->headers->set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
+        $request->headers->set('Sec-Fetch-Mode', 'navigate');
+        $request->headers->set('Sec-CH-UA', '"Chromium";v="120"');
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
 
         $event = new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response);
@@ -219,7 +241,7 @@ final class PageViewSubscriberTest extends TestCase
         self::assertCount(1, $repository->saved);
     }
 
-    public function testAllowsLegacyMobileBrowserUserAgent(): void
+    public function testAllowsAuthenticMobileSafariUserAgent(): void
     {
         $repository = new class implements PageViewRepository {
             /** @var list<PageView> */
@@ -248,7 +270,7 @@ final class PageViewSubscriberTest extends TestCase
         $subscriber = new PageViewSubscriber($repository, 'secret-key-123');
         $kernel = $this->createStub(HttpKernelInterface::class);
         $request = Request::create('https://bahdanhal.pl/tools', 'GET');
-        $request->headers->set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15');
+        $request->headers->set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1');
         $request->headers->set('Accept-Language', 'en-US,en;q=0.9');
         $request->headers->set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
