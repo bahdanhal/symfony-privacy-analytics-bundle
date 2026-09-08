@@ -196,16 +196,6 @@ final class PageViewSubscriberTest extends TestCase
             'Accept-Language' => 'en-US',
             'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         ]];
-        yield 'impossible futuristic safari version' => ['/tools', [
-            'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
-            'Accept-Language' => 'en-US',
-            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        ]];
-        yield 'impossible futuristic ios version' => ['/tools', [
-            'User-Agent' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_3 like Mac OS X) AppleWebKit/605.1.15',
-            'Accept-Language' => 'en-US',
-            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        ]];
         yield 'curl impersonate illegal grease brand' => ['/tools', [
             'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
             'Accept-Language' => 'en-US',
@@ -290,6 +280,45 @@ final class PageViewSubscriberTest extends TestCase
         $kernel = $this->createStub(HttpKernelInterface::class);
         $request = Request::create('https://bahdanhal.pl/tools', 'GET');
         $request->headers->set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1');
+        $request->headers->set('Accept-Language', 'en-US,en;q=0.9');
+        $request->headers->set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
+        $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
+
+        $subscriber->onTerminate(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
+
+        self::assertCount(1, $repository->saved);
+    }
+
+    public function testAllowsModernIosAndSafariUserAgent(): void
+    {
+        $repository = new class implements PageViewRepository {
+            /** @var list<PageView> */
+            public array $saved = [];
+
+            public function save(PageView $pageView): void
+            {
+                $this->saved[] = $pageView;
+            }
+
+            public function since(\DateTimeImmutable $since): array
+            {
+                return $this->saved;
+            }
+
+            public function prune(\DateTimeImmutable $now): int
+            {
+                return 0;
+            }
+
+            public function summary(\DateTimeImmutable $now): array
+            {
+                return [];
+            }
+        };
+        $subscriber = new PageViewSubscriber($repository, 'secret-key-123');
+        $kernel = $this->createStub(HttpKernelInterface::class);
+        $request = Request::create('https://bahdanhal.pl/tools', 'GET');
+        $request->headers->set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.3 Mobile/15E148 Safari/604.1');
         $request->headers->set('Accept-Language', 'en-US,en;q=0.9');
         $request->headers->set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);

@@ -84,8 +84,8 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
         . '|headlesschrome|phantomjs|puppeteer|selenium|playwright'
         . '|cl0q|palo alto networks|dalvik|wordpress|forestengine|leakix|l9scan|databot'
         . '|seranking|semrush|amazonbot|claudebot|chatgpt-user|ct-wp-scanner|publicwww'
-        . '|iphone os 13_2_3 like mac os x|iphone os 26_3_0 like mac os x'
-        . '|android 7\.0; sm-g892a|android 16; sm-s931b/i';
+        . '|iphone os 13_2_3 like mac os x'
+        . '|android 7\.0; sm-g892a/i';
 
     private const string PROBE_PATH_PATTERN = '#(?:^|/)(?:wp-admin|wp-content|wp-includes)(?:/|$)'
         . '|(?:^|/)(?:\.env|\.git)(?:/|$)|\.php(?:/|$)#i';
@@ -164,24 +164,7 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
             return true;
         }
 
-        // 6. Impossible Safari or iOS version ceiling: authentic Apple releases track macOS/iOS major releases (<= 20).
-        // Scrapers generate random impossible future versions such as "Version/26.0 Safari".
-        if (
-            preg_match('/version\/([0-9]+)/', $userAgent, $matches) === 1
-            && (int) $matches[1] > 20
-            && str_contains($userAgent, 'safari')
-        ) {
-            return true;
-        }
-
-        if (
-            preg_match('/(?:iphone|ipad|ipod).*?os\s+([0-9]+)/', $userAgent, $matches) === 1
-            && (int) $matches[1] > 20
-        ) {
-            return true;
-        }
-
-        // 7. Impersonation library fingerprint: curl_cffi and tls-client hardcode invalid GREASE brands
+        // 6. Impersonation library fingerprint: curl_cffi and tls-client hardcode invalid GREASE brands
         // such as "Not:A-Brand";v="8" containing an illegal colon punctuation character never produced by Chromium.
         $secChUa = strtolower((string) $request->headers->get('Sec-CH-UA'));
         if ($secChUa !== '' && str_contains($secChUa, 'not:a-brand')) {
