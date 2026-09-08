@@ -196,6 +196,25 @@ final class PageViewSubscriberTest extends TestCase
             'Accept-Language' => 'en-US',
             'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         ]];
+        yield 'impossible futuristic safari version' => ['/tools', [
+            'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
+            'Accept-Language' => 'en-US',
+            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        ]];
+        yield 'impossible futuristic ios version' => ['/tools', [
+            'User-Agent' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_3 like Mac OS X) AppleWebKit/605.1.15',
+            'Accept-Language' => 'en-US',
+            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        ]];
+        yield 'curl impersonate illegal grease brand' => ['/tools', [
+            'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+            'Accept-Language' => 'en-US',
+            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Sec-Fetch-Mode' => 'navigate',
+            'Sec-Fetch-Site' => 'none',
+            'Sec-CH-UA' => '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+        ]];
+        yield 'publicwww bot' => ['/tools', ['User-Agent' => 'Mozilla/5.0 (compatible; PublicWWWBot/1.0; +https://publicwww.com/bot.html)']];
     }
 
     public function testAllowsStandardChromiumUserAgent(): void
