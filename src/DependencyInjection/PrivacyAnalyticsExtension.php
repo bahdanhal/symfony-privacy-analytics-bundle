@@ -10,6 +10,7 @@ use Bahdan\PrivacyAnalyticsBundle\EventSubscriber\PageViewSubscriber;
 use Bahdan\PrivacyAnalyticsBundle\Infrastructure\DoctrinePageViewRepository;
 use Bahdan\PrivacyAnalyticsBundle\Infrastructure\JsonlPageViewRepository;
 use Bahdan\PrivacyAnalyticsBundle\MessageHandler\RecordPageViewHandler;
+use Bahdan\PrivacyAnalyticsBundle\Presentation\Http\BeaconController;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Definition;
@@ -24,7 +25,7 @@ final class PrivacyAnalyticsExtension extends Extension
     public function load(array $configs, ContainerBuilder $container): void
     {
         $configuration = new Configuration();
-        /** @var array{secret: string, storage: string, storage_directory: string, retention_days: int, async: bool, custom_bot_patterns: list<string>, summary_cache_ttl: int} $config */
+        /** @var array{secret: string, storage: string, storage_directory: string, retention_days: int, async: bool, custom_bot_patterns: list<string>, summary_cache_ttl: int, mode: string, beacon_path: string} $config */
         $config = $this->processConfiguration($configuration, $configs);
 
         $jsonlDefinition = new Definition(JsonlPageViewRepository::class, [
@@ -59,16 +60,30 @@ final class PrivacyAnalyticsExtension extends Extension
         $trafficAnalyticsDefinition->setPublic(true);
         $container->setDefinition(TrafficAnalytics::class, $trafficAnalyticsDefinition);
 
+        $beaconMode = ($config['mode'] ?? 'server') === 'beacon';
+
         $subscriberDefinition = new Definition(PageViewSubscriber::class, [
             new Reference(PageViewRepository::class),
             $config['secret'],
             $config['custom_bot_patterns'],
             $config['async'] ? new Reference(MessageBusInterface::class) : null,
+            $beaconMode,
         ]);
         $subscriberDefinition->setAutowired(true);
         $subscriberDefinition->setAutoconfigured(true);
         $subscriberDefinition->addTag('kernel.event_subscriber');
         $container->setDefinition(PageViewSubscriber::class, $subscriberDefinition);
+
+        $beaconControllerDefinition = new Definition(BeaconController::class, [
+            new Reference(PageViewRepository::class),
+            $config['secret'],
+            new Reference(PageViewSubscriber::class),
+            $config['async'] ? new Reference(MessageBusInterface::class) : null,
+        ]);
+        $beaconControllerDefinition->setAutowired(true);
+        $beaconControllerDefinition->setAutoconfigured(true);
+        $beaconControllerDefinition->setPublic(true);
+        $container->setDefinition(BeaconController::class, $beaconControllerDefinition);
 
         if ($config['async']) {
             if (!interface_exists(MessageBusInterface::class)) {

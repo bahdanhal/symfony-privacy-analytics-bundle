@@ -25,6 +25,7 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
         private string $secret,
         private array $customBotPatterns = [],
         private ?MessageBusInterface $messageBus = null,
+        private bool $beaconMode = false,
     ) {
     }
 
@@ -35,6 +36,10 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
 
     public function onTerminate(KernelEvent $event): void
     {
+        if ($this->beaconMode) {
+            return;
+        }
+
         if (!$event instanceof TerminateEvent && !$event instanceof ResponseEvent) {
             return;
         }
@@ -90,25 +95,26 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
     private const string PROBE_PATH_PATTERN = '#(?:^|/)(?:wp-admin|wp-content|wp-includes)(?:/|$)'
         . '|(?:^|/)(?:\.env|\.git)(?:/|$)|\.php(?:/|$)#i';
 
-    private function isExcluded(Request $request): bool
+    public function isExcluded(Request $request, ?string $overridePath = null, bool $isBeacon = false): bool
     {
-        $path = $request->getPathInfo();
-        $requestUriPath = (string) parse_url($request->getRequestUri(), PHP_URL_PATH);
+        $path = $overridePath ?? $request->getPathInfo();
+        $requestUriPath = (string) parse_url($overridePath ?? $request->getRequestUri(), PHP_URL_PATH);
         $userAgent = strtolower(trim((string) $request->headers->get('User-Agent')));
 
         return $userAgent === ''
             || str_starts_with($path, '/admin')
             || str_starts_with($path, '/mcp')
             || $path === '/healthz'
+            || (!$isBeacon && $path === '/api/pa/hit')
             || $request->headers->get('DNT') === '1'
             || $request->headers->get('Sec-GPC') === '1'
             || preg_match(self::PROBE_PATH_PATTERN, $requestUriPath) === 1
             || preg_match(self::BOT_PATTERN, $userAgent) === 1
             || $this->matchesCustomBotPattern($userAgent)
-            || $this->hasSpoofedBrowserHeaders($request, $userAgent);
+            || $this->hasSpoofedBrowserHeaders($request, $userAgent, $isBeacon);
     }
 
-    private function hasSpoofedBrowserHeaders(Request $request, string $userAgent): bool
+    public function hasSpoofedBrowserHeaders(Request $request, string $userAgent, bool $isBeacon = false): bool
     {
         $isClaimingBrowser = str_contains($userAgent, 'mozilla/')
             || str_contains($userAgent, 'chrome/')
@@ -126,9 +132,10 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
             return true;
         }
 
-        // 2. Automated scanners claiming to be a browser often send "Accept: */*" or omit text/html.
+        // 2. Automated scanners claiming to be a browser often send "Accept: */*" or omit text/html on document navigations.
+        // For client-side beacons (fetch / sendBeacon), browsers naturally send "Accept: */*".
         $accept = strtolower(trim((string) $request->headers->get('Accept')));
-        if ($accept === '*/*') {
+        if (!$isBeacon && $accept === '*/*') {
             return true;
         }
 
@@ -164,17 +171,21 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
             return true;
         }
 
-        // 6. Impersonation library fingerprint: curl_cffi and tls-client hardcode invalid GREASE brands
-        // such as "Not:A-Brand";v="8" containing an illegal colon punctuation character never produced by Chromium.
+        // 6. Impersonation & stealth library fingerprint: curl_cffi, tls-client, playwright-stealth, puppeteer-stealth,
+        // and selenium-stealth hardcode mock GREASE brands such as "Not:A-Brand";v="8", "Not-A.Brand";v="99", or "Not-A-Brand".
         $secChUa = strtolower((string) $request->headers->get('Sec-CH-UA'));
-        if ($secChUa !== '' && str_contains($secChUa, 'not:a-brand')) {
+        if ($secChUa !== '' && (
+            str_contains($secChUa, 'not:a-brand')
+            || str_contains($secChUa, 'not-a.brand')
+            || str_contains($secChUa, 'not-a-brand')
+        )) {
             return true;
         }
 
         return false;
     }
 
-    private function matchesCustomBotPattern(string $userAgent): bool
+    public function matchesCustomBotPattern(string $userAgent): bool
     {
         foreach ($this->customBotPatterns as $pattern) {
             $pattern = strtolower(trim((string) $pattern));
@@ -187,9 +198,9 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
     }
 
     /** @return array{string, ?string} */
-    private function source(Request $request): array
+    public function source(Request $request, ?string $overrideReferrer = null): array
     {
-        $referrer = (string) $request->headers->get('Referer');
+        $referrer = $overrideReferrer ?? (string) $request->headers->get('Referer');
         $host = strtolower((string) parse_url($referrer, PHP_URL_HOST));
         if ($host === '') {
             return ['direct', null];
@@ -221,7 +232,7 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
         return false;
     }
 
-    private function normalizedPath(string $path): string
+    public function normalizedPath(string $path): string
     {
         $clean = '/' . trim($path, '/');
         if ($clean === '//') {

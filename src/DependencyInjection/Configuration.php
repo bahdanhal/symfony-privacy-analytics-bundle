@@ -48,6 +48,15 @@ final class Configuration implements ConfigurationInterface
                     ->min(0)
                     ->info('Seconds to cache dashboard summaries; set to zero to disable caching.')
                 ->end()
+                ->enumNode('mode')
+                    ->values(['server', 'beacon'])
+                    ->defaultValue('server')
+                    ->info('Ingestion mode: server (automatic on HTML GET) or beacon (client-side beacon).')
+                ->end()
+                ->scalarNode('beacon_path')
+                    ->defaultValue('/api/pa/hit')
+                    ->info('Endpoint path for beacon ingestion.')
+                ->end()
             ->end();
 
         return $treeBuilder;

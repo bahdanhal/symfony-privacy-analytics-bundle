@@ -380,9 +380,94 @@ final class PageViewSubscriberTest extends TestCase
 
         self::assertTrue($container->hasDefinition(\Bahdan\PrivacyAnalyticsBundle\Application\TrafficAnalytics::class));
         self::assertTrue($container->hasDefinition(\Bahdan\PrivacyAnalyticsBundle\EventSubscriber\PageViewSubscriber::class));
+        self::assertTrue($container->hasDefinition(\Bahdan\PrivacyAnalyticsBundle\Presentation\Http\BeaconController::class));
         self::assertTrue($container->hasAlias(\Bahdan\PrivacyAnalyticsBundle\Domain\PageViewRepository::class));
         self::assertFalse($container->hasDefinition(\Bahdan\PrivacyAnalyticsBundle\Infrastructure\DoctrinePageViewRepository::class));
         $container->compile();
+    }
+
+    public function testExcludesStealthLibrariesWithNotABrandVariations(): void
+    {
+        $repository = new class implements PageViewRepository {
+            /** @var list<PageView> */
+            public array $saved = [];
+
+            public function save(PageView $pageView): void
+            {
+                $this->saved[] = $pageView;
+            }
+
+            public function since(\DateTimeImmutable $since): array
+            {
+                return $this->saved;
+            }
+
+            public function prune(\DateTimeImmutable $now): int
+            {
+                return 0;
+            }
+
+            public function summary(\DateTimeImmutable $now): array
+            {
+                return [];
+            }
+        };
+
+        $subscriber = new PageViewSubscriber($repository, 'secret-key-123');
+        $kernel = $this->createStub(HttpKernelInterface::class);
+
+        // Stealth scraper with "Not-A.Brand";v="99"
+        $request = Request::create('https://ileza.pl/ceny/iphone-11-pro-512gb', 'GET');
+        $request->headers->set('User-Agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36');
+        $request->headers->set('Accept-Language', 'en-US,en;q=0.9');
+        $request->headers->set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
+        $request->headers->set('Sec-Fetch-Mode', 'navigate');
+        $request->headers->set('Sec-Fetch-Site', 'none');
+        $request->headers->set('Sec-CH-UA', '"Chromium";v="143", "Google Chrome";v="143", "Not-A.Brand";v="99"');
+        $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
+
+        $subscriber->onTerminate(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
+        self::assertCount(0, $repository->saved, 'Should reject stealth scraper with Not-A.Brand mock GREASE');
+    }
+
+    public function testBypassesOnTerminateWhenBeaconModeIsEnabled(): void
+    {
+        $repository = new class implements PageViewRepository {
+            /** @var list<PageView> */
+            public array $saved = [];
+
+            public function save(PageView $pageView): void
+            {
+                $this->saved[] = $pageView;
+            }
+
+            public function since(\DateTimeImmutable $since): array
+            {
+                return $this->saved;
+            }
+
+            public function prune(\DateTimeImmutable $now): int
+            {
+                return 0;
+            }
+
+            public function summary(\DateTimeImmutable $now): array
+            {
+                return [];
+            }
+        };
+
+        $subscriber = new PageViewSubscriber($repository, 'secret-key-123', beaconMode: true);
+        $kernel = $this->createStub(HttpKernelInterface::class);
+
+        $request = Request::create('https://bahdanhal.pl/tools', 'GET');
+        $request->headers->set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        $request->headers->set('Accept-Language', 'en-US,en;q=0.9');
+        $request->headers->set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
+        $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
+
+        $subscriber->onTerminate(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
+        self::assertCount(0, $repository->saved, 'Should not record page views on HTML GET when beaconMode is active');
     }
 
     public function testBundlePrependsDoctrineMappingWhenDoctrineIsAvailable(): void
