@@ -205,6 +205,11 @@ final class PageViewSubscriberTest extends TestCase
             'Sec-CH-UA' => '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
         ]];
         yield 'publicwww bot' => ['/tools', ['User-Agent' => 'Mozilla/5.0 (compatible; PublicWWWBot/1.0; +https://publicwww.com/bot.html)']];
+        yield 'dataprovider commercial crawler' => ['/tools', [
+            'User-Agent' => 'Mozilla/5.0 (compatible; Dataprovider.com)',
+            'Accept-Language' => 'en-US',
+            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        ]];
     }
 
     public function testAllowsStandardChromiumUserAgent(): void

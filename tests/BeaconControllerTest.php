@@ -150,4 +150,25 @@ final class BeaconControllerTest extends TestCase
         self::assertCount(1, $repository->saved);
         self::assertSame('/ceny/macbook', $repository->saved[0]->path);
     }
+
+    public function testExcludesDataproviderCrawlerPostingToBeacon(): void
+    {
+        $repository = $this->createRepository();
+        $subscriber = new PageViewSubscriber($repository, 'secret-123', beaconMode: true);
+        $controller = new BeaconController($repository, 'secret-123', $subscriber);
+
+        $request = Request::create(
+            'https://ileza.pl/api/pa/hit',
+            'POST',
+            content: json_encode(['p' => '/ceny/macbook'], JSON_THROW_ON_ERROR),
+        );
+        $request->headers->set('User-Agent', 'Mozilla/5.0 (compatible; Dataprovider.com)');
+        $request->headers->set('Accept-Language', 'en-US,en;q=0.9');
+
+        $response = $controller($request);
+
+        self::assertSame(Response::HTTP_NO_CONTENT, $response->getStatusCode());
+        /** @var mixed $repository */
+        self::assertCount(0, $repository->saved);
+    }
 }
