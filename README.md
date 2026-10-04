@@ -4,6 +4,8 @@ A lightweight, zero-cookie, GDPR-compliant server-side web analytics bundle for 
 
 [Packagist](https://packagist.org/packages/bahdan/symfony-privacy-analytics-bundle) · [GitHub](https://github.com/bahdanhal/symfony-privacy-analytics-bundle)
 
+Used in production by [Stackhal](https://stackhal.com/), [IleZa.pl](https://ileza.pl/) and [bahdanhal.pl](https://bahdanhal.pl/).
+
 ## Key Features
 
 - **Zero Cookies / No Consent Banner Needed**: Anonymously hashes `IP + User-Agent + secret` with HMAC-SHA256.
