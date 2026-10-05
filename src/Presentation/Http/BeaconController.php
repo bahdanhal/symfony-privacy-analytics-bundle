@@ -72,9 +72,9 @@ final readonly class BeaconController
             return new Response('', Response::HTTP_NO_CONTENT, $corsHeaders);
         }
 
-        $referrer = isset($payload['r']) && is_string($payload['r']) && trim($payload['r']) !== ''
-            ? trim($payload['r'])
-            : null;
+        // The beacon's own Referer header names the page that sent it, so a missing document
+        // referrer must stay empty (a direct visit) instead of falling back to that header.
+        $referrer = isset($payload['r']) && is_string($payload['r']) ? trim($payload['r']) : '';
         [$source, $referrerHost] = $this->subscriber->source($request, $referrer);
 
         $clientIp = $request->getClientIp() ?? 'unknown';

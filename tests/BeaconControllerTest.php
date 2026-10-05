@@ -8,6 +8,7 @@ use Bahdan\PrivacyAnalyticsBundle\Domain\PageView;
 use Bahdan\PrivacyAnalyticsBundle\Domain\PageViewRepository;
 use Bahdan\PrivacyAnalyticsBundle\EventSubscriber\PageViewSubscriber;
 use Bahdan\PrivacyAnalyticsBundle\Presentation\Http\BeaconController;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -82,6 +83,48 @@ final class BeaconControllerTest extends TestCase
         self::assertSame('/ceny/macbook', $repository->saved[0]->path);
         self::assertSame('search', $repository->saved[0]->source);
         self::assertSame('google.com', $repository->saved[0]->referrerHost);
+    }
+
+    /** @return iterable<string, array{mixed, string, ?string}> */
+    public static function documentReferrers(): iterable
+    {
+        yield 'missing referrer is a direct visit' => [null, 'direct', null];
+        yield 'blank referrer is a direct visit' => ['  ', 'direct', null];
+        yield 'non-string referrer is a direct visit' => [42, 'direct', null];
+        yield 'same-host referrer is internal navigation' => ['https://ileza.pl/ceny/macbook', 'internal', null];
+        yield 'external referrer keeps its host' => ['https://news.ycombinator.com/item?id=1', 'referral', 'news.ycombinator.com'];
+    }
+
+    #[DataProvider('documentReferrers')]
+    public function testClassifiesSourceFromDocumentReferrerOnly(
+        mixed $documentReferrer,
+        string $expectedSource,
+        ?string $expectedReferrerHost,
+    ): void {
+        $repository = $this->createRepository();
+        $subscriber = new PageViewSubscriber($repository, 'secret-123', beaconMode: true);
+        $controller = new BeaconController($repository, 'secret-123', $subscriber);
+
+        $request = Request::create(
+            'https://ileza.pl/api/pa/hit',
+            'POST',
+            server: ['REMOTE_ADDR' => '93.159.13.50'],
+            content: json_encode(['p' => '/ceny/iphone', 'r' => $documentReferrer], JSON_THROW_ON_ERROR),
+        );
+        $request->headers->set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36');
+        $request->headers->set('Accept-Language', 'pl-PL,pl;q=0.9');
+        $request->headers->set('Accept', '*/*');
+        $request->headers->set('Sec-Fetch-Mode', 'cors');
+        $request->headers->set('Sec-CH-UA', '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"');
+        // Browsers send the page that fired the beacon as the request's own Referer header.
+        $request->headers->set('Referer', 'https://ileza.pl/ceny/iphone?utm_source=chatgpt.com');
+
+        $controller($request);
+
+        /** @var mixed $repository */
+        self::assertCount(1, $repository->saved);
+        self::assertSame($expectedSource, $repository->saved[0]->source);
+        self::assertSame($expectedReferrerHost, $repository->saved[0]->referrerHost);
     }
 
     public function testHonorsDoNotTrackHeader(): void
