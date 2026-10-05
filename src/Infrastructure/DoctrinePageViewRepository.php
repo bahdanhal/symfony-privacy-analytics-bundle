@@ -287,9 +287,11 @@ final readonly class DoctrinePageViewRepository implements PageViewRepository
             $cursor = $cursor->modify('+7 days');
         }
 
+        // SQLite only understands the ISO week specifiers (%G, %V) from 3.46, so the week is derived from its Thursday.
+        $isoThursday = "date(occurred_at, '-3 days', 'weekday 4')";
         $weekExpression = $this->entityManager->getConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform
             ? "TO_CHAR(DATE_TRUNC('week', occurred_at AT TIME ZONE 'UTC'), 'IYYY') || '-W' || TO_CHAR(DATE_TRUNC('week', occurred_at AT TIME ZONE 'UTC'), 'IW')"
-            : "strftime('%Y-W%V', occurred_at)";
+            : "strftime('%Y', {$isoThursday}) || '-W' || printf('%02d', (strftime('%j', {$isoThursday}) - 1) / 7 + 1)";
 
         /** @var list<array{week: mixed, page_views: mixed, unique_visitors: mixed}> $records */
         $records = $this->entityManager->getConnection()->createQueryBuilder()
