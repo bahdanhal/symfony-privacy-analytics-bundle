@@ -104,6 +104,28 @@ final class PageViewSubscriberTest extends TestCase
         self::assertSame('baidu.com', $repository->saved[0]->referrerHost);
     }
 
+    /** @return iterable<string, array{string, string}> */
+    public static function provideReferrerHosts(): iterable
+    {
+        yield 'chatgpt.com is not the t.co shortener' => ['https://chatgpt.com/', 'referral'];
+        yield 'netflix.com is not x.com' => ['https://www.netflix.com/title/1', 'referral'];
+        yield 't.co shortener' => ['https://t.co/abc', 'social'];
+        yield 'facebook link shim subdomain' => ['https://l.facebook.com/l.php', 'social'];
+        yield 'google country domain' => ['https://www.google.com.hk/', 'search'];
+        yield 'baidu mobile subdomain' => ['https://m.baidu.com/s', 'search'];
+        yield 'brave search subdomain' => ['https://search.brave.com/search', 'search'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('provideReferrerHosts')]
+    public function testMatchesSearchAndSocialReferrersOnDomainBoundaries(string $referrer, string $expectedSource): void
+    {
+        $subscriber = new PageViewSubscriber($this->createStub(PageViewRepository::class), 'secret-key-123');
+
+        [$source] = $subscriber->source(Request::create('https://ileza.pl/'), $referrer);
+
+        self::assertSame($expectedSource, $source);
+    }
+
     /**
      * @param array<string, string> $headers
      */

@@ -223,8 +223,14 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
     /** @param list<string> $patterns */
     private function matchesHost(string $host, array $patterns): bool
     {
+        // Patterns match whole domain labels, so "t.co" does not match "chatgpt.com".
+        // A trailing dot ("google.") stands for any top-level domain.
+        $dottedHost = '.' . $host;
         foreach ($patterns as $pattern) {
-            if (str_contains($host, $pattern)) {
+            $matches = str_ends_with($pattern, '.')
+                ? str_contains($dottedHost, '.' . $pattern)
+                : str_ends_with($dottedHost, '.' . $pattern);
+            if ($matches) {
                 return true;
             }
         }
