@@ -11,7 +11,7 @@ Used in production by [Stackhal](https://stackhal.com/), [IleZa.pl](https://ilez
 - **Zero Cookies / No Consent Banner Needed**: Anonymously hashes `IP + User-Agent + secret` with HMAC-SHA256.
 - **Bot & Crawler Filtering**: Ignores automated crawlers, spiders, and testing clients automatically.
 - **Privacy Header Compliance**: Honors `DNT` (Do Not Track) and `Sec-GPC` (Global Privacy Control) request headers.
-- **Referrer Categorization**: Automatically groups incoming traffic into `search`, `social`, `referral`, `internal`, and `direct`.
+- **Referrer Categorization**: Automatically groups incoming traffic into `search`, `social`, `referral`, `internal`, and `direct`. A visit without a referrer is attributed to the hostname in `utm_source` when there is one (for example `utm_source=chatgpt.com`); other `utm_source` values and the rest of the query string are ignored.
 - **Dual Storage**: Supports Doctrine ORM (PostgreSQL/SQLite/MySQL) and monthly partitioned JSONL storage with streaming retention pruning.
 - **SQL Aggregation**: Doctrine summaries aggregate counts, unique visitors, sources, referrers, paths, and daily metrics in the database rather than hydrating raw page views.
 - **Cached Summaries**: Dashboard aggregates use the application's PSR-6-compatible Symfony cache for a configurable short TTL.

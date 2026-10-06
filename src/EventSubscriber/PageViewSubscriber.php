@@ -59,7 +59,11 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
             return;
         }
 
-        [$source, $referrerHost] = $this->source($request);
+        $campaignSource = $request->query->all()['utm_source'] ?? null;
+        [$source, $referrerHost] = $this->source(
+            $request,
+            campaignSource: is_string($campaignSource) ? $campaignSource : null,
+        );
         $clientIp = $request->getClientIp() ?? 'unknown';
         $userAgent = (string) $request->headers->get('User-Agent');
         $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
@@ -198,10 +202,14 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
     }
 
     /** @return array{string, ?string} */
-    public function source(Request $request, ?string $overrideReferrer = null): array
+    public function source(Request $request, ?string $overrideReferrer = null, ?string $campaignSource = null): array
     {
         $referrer = $overrideReferrer ?? (string) $request->headers->get('Referer');
         $host = strtolower((string) parse_url($referrer, PHP_URL_HOST));
+        if ($host === '') {
+            // In-app browsers such as the ChatGPT app send no referrer and tag the landing URL with utm_source instead.
+            $host = $this->campaignHost($campaignSource);
+        }
         if ($host === '') {
             return ['direct', null];
         }
@@ -218,6 +226,16 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
         }
 
         return ['referral', $host];
+    }
+
+    /** Only a hostname is accepted, so free-text campaign labels and personal data are never stored. */
+    private function campaignHost(?string $campaignSource): string
+    {
+        $host = strtolower(trim((string) $campaignSource));
+
+        return strlen($host) <= 253 && preg_match('/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/', $host) === 1
+            ? $host
+            : '';
     }
 
     /** @param list<string> $patterns */

@@ -105,11 +105,55 @@ final class BeaconControllerTest extends TestCase
         $subscriber = new PageViewSubscriber($repository, 'secret-123', beaconMode: true);
         $controller = new BeaconController($repository, 'secret-123', $subscriber);
 
+        $controller($this->browserBeacon(['p' => '/ceny/iphone', 'r' => $documentReferrer]));
+
+        /** @var mixed $repository */
+        self::assertCount(1, $repository->saved);
+        self::assertSame($expectedSource, $repository->saved[0]->source);
+        self::assertSame($expectedReferrerHost, $repository->saved[0]->referrerHost);
+    }
+
+    /** @return iterable<string, array{mixed, mixed, string, ?string}> */
+    public static function campaignSources(): iterable
+    {
+        yield 'hostname without a referrer becomes a referral' => [null, 'chatgpt.com', 'referral', 'chatgpt.com'];
+        yield 'hostname is normalised' => [null, ' WWW.Google.com ', 'search', 'google.com'];
+        yield 'own hostname is internal navigation' => [null, 'ileza.pl', 'internal', null];
+        yield 'campaign label is not a hostname' => [null, 'newsletter', 'direct', null];
+        yield 'email address is not stored' => [null, 'someone@example.com', 'direct', null];
+        yield 'url is not a hostname' => [null, 'https://chatgpt.com/', 'direct', null];
+        yield 'non-string value is ignored' => [null, ['chatgpt.com'], 'direct', null];
+        yield 'external referrer wins' => ['https://news.ycombinator.com/', 'chatgpt.com', 'referral', 'news.ycombinator.com'];
+        yield 'internal navigation wins' => ['https://ileza.pl/ceny/macbook', 'chatgpt.com', 'internal', null];
+    }
+
+    #[DataProvider('campaignSources')]
+    public function testFallsBackToCampaignSourceHostWithoutDocumentReferrer(
+        mixed $documentReferrer,
+        mixed $campaignSource,
+        string $expectedSource,
+        ?string $expectedReferrerHost,
+    ): void {
+        $repository = $this->createRepository();
+        $subscriber = new PageViewSubscriber($repository, 'secret-123', beaconMode: true);
+        $controller = new BeaconController($repository, 'secret-123', $subscriber);
+
+        $controller($this->browserBeacon(['p' => '/ceny/iphone', 'r' => $documentReferrer, 's' => $campaignSource]));
+
+        /** @var mixed $repository */
+        self::assertCount(1, $repository->saved);
+        self::assertSame($expectedSource, $repository->saved[0]->source);
+        self::assertSame($expectedReferrerHost, $repository->saved[0]->referrerHost);
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function browserBeacon(array $payload): Request
+    {
         $request = Request::create(
             'https://ileza.pl/api/pa/hit',
             'POST',
             server: ['REMOTE_ADDR' => '93.159.13.50'],
-            content: json_encode(['p' => '/ceny/iphone', 'r' => $documentReferrer], JSON_THROW_ON_ERROR),
+            content: json_encode($payload, JSON_THROW_ON_ERROR),
         );
         $request->headers->set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36');
         $request->headers->set('Accept-Language', 'pl-PL,pl;q=0.9');
@@ -119,12 +163,7 @@ final class BeaconControllerTest extends TestCase
         // Browsers send the page that fired the beacon as the request's own Referer header.
         $request->headers->set('Referer', 'https://ileza.pl/ceny/iphone?utm_source=chatgpt.com');
 
-        $controller($request);
-
-        /** @var mixed $repository */
-        self::assertCount(1, $repository->saved);
-        self::assertSame($expectedSource, $repository->saved[0]->source);
-        self::assertSame($expectedReferrerHost, $repository->saved[0]->referrerHost);
+        return $request;
     }
 
     public function testHonorsDoNotTrackHeader(): void

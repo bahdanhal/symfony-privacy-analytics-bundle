@@ -126,6 +126,47 @@ final class PageViewSubscriberTest extends TestCase
         self::assertSame($expectedSource, $source);
     }
 
+    /** @return iterable<string, array{string, string, ?string}> */
+    public static function provideCampaignLandings(): iterable
+    {
+        yield 'hostname in utm_source' => ['https://ileza.pl/ceny/iphone?utm_source=chatgpt.com', 'referral', 'chatgpt.com'];
+        yield 'campaign label' => ['https://ileza.pl/ceny/iphone?utm_source=newsletter', 'direct', null];
+        yield 'array-valued parameter' => ['https://ileza.pl/ceny/iphone?utm_source[]=chatgpt.com', 'direct', null];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('provideCampaignLandings')]
+    public function testServerSideModeFallsBackToCampaignSourceHost(
+        string $uri,
+        string $expectedSource,
+        ?string $expectedReferrerHost,
+    ): void {
+        $saved = null;
+        $repository = $this->createMock(PageViewRepository::class);
+        $repository->expects(self::once())
+            ->method('save')
+            ->willReturnCallback(static function (PageView $pageView) use (&$saved): void {
+                $saved = $pageView;
+            });
+        $subscriber = new PageViewSubscriber($repository, 'secret-key-123');
+
+        $request = Request::create($uri, 'GET');
+        $request->headers->set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        $request->headers->set('Accept-Language', 'pl-PL,pl;q=0.9');
+        $request->headers->set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
+        $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html; charset=UTF-8']);
+
+        $subscriber->onTerminate(new ResponseEvent(
+            $this->createStub(HttpKernelInterface::class),
+            $request,
+            HttpKernelInterface::MAIN_REQUEST,
+            $response,
+        ));
+
+        self::assertInstanceOf(PageView::class, $saved);
+        self::assertSame($expectedSource, $saved->source);
+        self::assertSame($expectedReferrerHost, $saved->referrerHost);
+    }
+
     /**
      * @param array<string, string> $headers
      */

@@ -75,7 +75,8 @@ final readonly class BeaconController
         // The beacon's own Referer header names the page that sent it, so a missing document
         // referrer must stay empty (a direct visit) instead of falling back to that header.
         $referrer = isset($payload['r']) && is_string($payload['r']) ? trim($payload['r']) : '';
-        [$source, $referrerHost] = $this->subscriber->source($request, $referrer);
+        $campaignSource = isset($payload['s']) && is_string($payload['s']) ? $payload['s'] : null;
+        [$source, $referrerHost] = $this->subscriber->source($request, $referrer, $campaignSource);
 
         $clientIp = $request->getClientIp() ?? 'unknown';
         $userAgent = (string) $request->headers->get('User-Agent');
