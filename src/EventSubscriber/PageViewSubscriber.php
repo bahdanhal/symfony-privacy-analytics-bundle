@@ -93,6 +93,7 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
         . '|headlesschrome|phantomjs|puppeteer|selenium|playwright'
         . '|cl0q|palo alto networks|dalvik|wordpress|forestengine|leakix|l9scan|databot|dataprovider'
         . '|seranking|semrush|amazonbot|claudebot|chatgpt-user|ct-wp-scanner|publicwww'
+        . '|meta-webindexer|meta-externalagent|bytespider|exasearch|exa\.ai|perplexity|cohere-ai|omgili|anthropic-ai|diffbot'
         . '|iphone os 13_2_3 like mac os x'
         . '|android 7\.0; sm-g892a/i';
 
