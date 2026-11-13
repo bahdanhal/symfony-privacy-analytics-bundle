@@ -11,6 +11,7 @@ use Bahdan\PrivacyAnalyticsBundle\Infrastructure\DoctrinePageViewRepository;
 use Bahdan\PrivacyAnalyticsBundle\Infrastructure\JsonlPageViewRepository;
 use Bahdan\PrivacyAnalyticsBundle\MessageHandler\RecordPageViewHandler;
 use Bahdan\PrivacyAnalyticsBundle\Presentation\Http\BeaconController;
+use Bahdan\PrivacyAnalyticsBundle\Presentation\Http\BeaconScriptController;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Definition;
@@ -84,6 +85,10 @@ final class PrivacyAnalyticsExtension extends Extension
         $beaconControllerDefinition->setAutoconfigured(true);
         $beaconControllerDefinition->setPublic(true);
         $container->setDefinition(BeaconController::class, $beaconControllerDefinition);
+
+        $scriptController = new Definition(BeaconScriptController::class);
+        $scriptController->setPublic(true);
+        $container->setDefinition(BeaconScriptController::class, $scriptController);
 
         if ($config['async']) {
             if (!interface_exists(MessageBusInterface::class)) {

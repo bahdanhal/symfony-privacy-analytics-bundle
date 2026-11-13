@@ -58,6 +58,43 @@ privacy_analytics:
     - your-internal-monitor
 ```
 
+## Browser beacon
+
+For client-side page views, configure `privacy_analytics.mode: beacon` and install
+the bundle assets during deployment:
+
+```bash
+php bin/console assets:install public
+```
+
+Replace any existing inline analytics beacon with the bundle script in your base
+template:
+
+```html
+<script src="/bundles/privacyanalytics/beacon.js" defer></script>
+```
+
+Alternatively, serve the script through Symfony by importing its controller:
+
+```yaml
+privacy_analytics_script:
+  resource: '@PrivacyAnalyticsBundle/src/Presentation/Http/BeaconScriptController.php'
+  type: attribute
+```
+
+For bundles resolved at the package root, the resource above is relative to that
+root. Include `/api/pa/beacon.js` in the script tag when using this route. This
+also supports deployments with a separate static-file image.
+
+Set `data-beacon-path="/analytics/hit"` if your beacon route uses a custom path.
+The route must match the configured `privacy_analytics.beacon_path`.
+
+The script skips browsers reporting `navigator.webdriver`, honors Do Not Track
+and Global Privacy Control, and records each page once after it becomes visible.
+Prerendered and background pages wait until activation or visibility. Automated
+browsers can conceal WebDriver, so recorded page views do not establish human
+identity. No interaction requirement or persistent visitor identifier is added.
+
 ## High-traffic ingestion with Messenger
 
 Install Messenger, enable async ingestion, and route the bundle message to your asynchronous transport:
