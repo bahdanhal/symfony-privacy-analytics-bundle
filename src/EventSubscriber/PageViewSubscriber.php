@@ -108,7 +108,8 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
 
         return $userAgent === ''
             || str_starts_with($path, '/admin')
-            || str_starts_with($path, '/mcp')
+            || $path === '/mcp'
+            || str_starts_with($path, '/mcp/')
             || $path === '/healthz'
             || (!$isBeacon && $path === '/api/pa/hit')
             || $request->headers->get('DNT') === '1'

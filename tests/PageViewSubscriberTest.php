@@ -17,6 +17,18 @@ use Symfony\Component\DependencyInjection\Extension\Extension;
 
 final class PageViewSubscriberTest extends TestCase
 {
+    public function testPublicMcpGuideIsIncludedWhileMcpEndpointsAreExcluded(): void
+    {
+        $subscriber = new PageViewSubscriber($this->createStub(PageViewRepository::class), 'test-secret');
+        $request = Request::create('https://example.com/mcp-guide.html');
+        $request->headers->set('User-Agent', 'Mozilla/5.0 Firefox/153.0');
+        $request->headers->set('Accept-Language', 'en-US');
+
+        self::assertFalse($subscriber->isExcluded($request, '/mcp-guide.html', true));
+        self::assertTrue($subscriber->isExcluded($request, '/mcp', true));
+        self::assertTrue($subscriber->isExcluded($request, '/mcp/messages', true));
+    }
+
     public function testRecordsMainHtmlGetRequests(): void
     {
         $repository = new class implements PageViewRepository {
