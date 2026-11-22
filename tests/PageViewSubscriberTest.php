@@ -271,14 +271,6 @@ final class PageViewSubscriberTest extends TestCase
             'Accept-Language' => 'en-US',
             'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         ]];
-        yield 'curl impersonate illegal grease brand' => ['/tools', [
-            'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-            'Accept-Language' => 'en-US',
-            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Sec-Fetch-Mode' => 'navigate',
-            'Sec-Fetch-Site' => 'none',
-            'Sec-CH-UA' => '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
-        ]];
         yield 'publicwww bot' => ['/tools', ['User-Agent' => 'Mozilla/5.0 (compatible; PublicWWWBot/1.0; +https://publicwww.com/bot.html)']];
         yield 'dataprovider commercial crawler' => ['/tools', [
             'User-Agent' => 'Mozilla/5.0 (compatible; Dataprovider.com)',
@@ -471,7 +463,7 @@ final class PageViewSubscriberTest extends TestCase
         $container->compile();
     }
 
-    public function testExcludesStealthLibrariesWithNotABrandVariations(): void
+    public function testRecordsChromiumNavigationWithGreaseBrand(): void
     {
         $repository = new class implements PageViewRepository {
             /** @var list<PageView> */
@@ -501,7 +493,7 @@ final class PageViewSubscriberTest extends TestCase
         $subscriber = new PageViewSubscriber($repository, 'secret-key-123');
         $kernel = $this->createStub(HttpKernelInterface::class);
 
-        // Stealth scraper with "Not-A.Brand";v="99"
+        // Real Chromium navigations may include arbitrary GREASE brands.
         $request = Request::create('https://ileza.pl/ceny/iphone-11-pro-512gb', 'GET');
         $request->headers->set('User-Agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36');
         $request->headers->set('Accept-Language', 'en-US,en;q=0.9');
@@ -512,7 +504,7 @@ final class PageViewSubscriberTest extends TestCase
         $response = new Response('<html>OK</html>', 200, ['Content-Type' => 'text/html']);
 
         $subscriber->onTerminate(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
-        self::assertCount(0, $repository->saved, 'Should reject stealth scraper with Not-A.Brand mock GREASE');
+        self::assertCount(1, $repository->saved);
     }
 
     public function testBypassesOnTerminateWhenBeaconModeIsEnabled(): void

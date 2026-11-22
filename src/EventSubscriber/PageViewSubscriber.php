@@ -177,16 +177,8 @@ final readonly class PageViewSubscriber implements EventSubscriberInterface
             return true;
         }
 
-        // 6. Impersonation & stealth library fingerprint: curl_cffi, tls-client, playwright-stealth, puppeteer-stealth,
-        // and selenium-stealth hardcode mock GREASE brands such as "Not:A-Brand";v="8", "Not-A.Brand";v="99", or "Not-A-Brand".
-        $secChUa = strtolower((string) $request->headers->get('Sec-CH-UA'));
-        if ($secChUa !== '' && (
-            str_contains($secChUa, 'not:a-brand')
-            || str_contains($secChUa, 'not-a.brand')
-            || str_contains($secChUa, 'not-a-brand')
-        )) {
-            return true;
-        }
+        // Chromium deliberately varies arbitrary GREASE brands in Sec-CH-UA.
+        // Those brands alone cannot distinguish a real browser from automation.
 
         return false;
     }

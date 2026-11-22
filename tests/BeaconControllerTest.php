@@ -187,7 +187,8 @@ final class BeaconControllerTest extends TestCase
         self::assertCount(0, $repository->saved);
     }
 
-    public function testExcludesStealthScrapersEvenIfPostingToBeacon(): void
+    #[DataProvider('chromiumGreaseBrands')]
+    public function testRecordsChromiumBeaconWithGreaseBrand(string $brand): void
     {
         $repository = $this->createRepository();
         $subscriber = new PageViewSubscriber($repository, 'secret-123', beaconMode: true);
@@ -198,13 +199,43 @@ final class BeaconControllerTest extends TestCase
             'POST',
             content: json_encode(['p' => '/ceny/macbook'], JSON_THROW_ON_ERROR),
         );
-        $request->headers->set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        $request->headers->set('User-Agent', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36');
         $request->headers->set('Accept-Language', 'en-US,en;q=0.9');
-        $request->headers->set('Sec-CH-UA', '"Chromium";v="143", "Google Chrome";v="143", "Not-A.Brand";v="99"');
+        $request->headers->set('Accept', '*/*');
+        $request->headers->set('Sec-Fetch-Mode', 'cors');
+        $request->headers->set('Sec-Fetch-Site', 'same-origin');
+        $request->headers->set('Sec-CH-UA', '"Chromium";v="157", "Google Chrome";v="157", '.$brand);
 
         $response = $controller($request);
 
         self::assertSame(Response::HTTP_NO_CONTENT, $response->getStatusCode());
+        /** @var mixed $repository */
+        self::assertCount(1, $repository->saved);
+    }
+
+    public static function chromiumGreaseBrands(): iterable
+    {
+        yield 'Chrome 157' => ['"Not-A.Brand";v="99"'];
+        yield 'colon and hyphen' => ['"Not:A-Brand";v="8"'];
+        yield 'hyphens' => ['"Not-A-Brand";v="24"'];
+        yield 'arbitrary punctuation' => ['"Not.A/Brand";v="24"'];
+    }
+
+    public function testStillRejectsHeadlessBrowserWithGreaseBrand(): void
+    {
+        $repository = $this->createRepository();
+        $subscriber = new PageViewSubscriber($repository, 'secret-123', beaconMode: true);
+        $controller = new BeaconController($repository, 'secret-123', $subscriber);
+        $request = Request::create(
+            'https://ileza.pl/api/pa/hit',
+            'POST',
+            content: json_encode(['p' => '/ceny/macbook'], JSON_THROW_ON_ERROR),
+        );
+        $request->headers->set('User-Agent', 'Mozilla/5.0 HeadlessChrome/157.0.0.0 Safari/537.36');
+        $request->headers->set('Accept-Language', 'en-US');
+        $request->headers->set('Sec-CH-UA', '"Chromium";v="157", "Not-A.Brand";v="99"');
+
+        self::assertSame(Response::HTTP_NO_CONTENT, $controller($request)->getStatusCode());
         /** @var mixed $repository */
         self::assertCount(0, $repository->saved);
     }
